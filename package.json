@@ -1,0 +1,46 @@
+{
+  "name": "cloud189-sdk",
+  "version": "1.0.0",
+  "description": "cloud189-sdk",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "!__tests__"
+  ],
+  "scripts": {
+    "start": "node ./test/app.js",
+    "build": "tsc",
+    "test": "mocha",
+    "coverage": "nyc npm run test"
+  },
+  "author": "wes lin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wes-lin/cloud189-sdk.git"
+  },
+  "keywords": [
+    "天翼网盘sdk"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "got": "11.8.2",
+    "node-jsencrypt": "^1.0.0",
+    "tough-cookie": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.16",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.12.13",
+    "chai": "4.4.1",
+    "mocha": "^10.4.0",
+    "nock": "14.0.0-beta.7",
+    "nyc": "^15.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "4.9.5"
+  }
+}

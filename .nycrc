@@ -1,0 +1,8 @@
+{
+  "all": true,
+  "check-coverage": true,
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.spec.ts", "src/__test__/data/**"],
+  "reporter": ["text", "html"],
+  "parser-plugins": ["typescript", "classProperties", "classPrivateProperties"]
+}

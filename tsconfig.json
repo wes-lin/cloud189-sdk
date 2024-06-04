@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "declaration": true
+  },
+  "ts-node": { "esm": true },
+  "include": ["src/lib/**/*"],
+  "exclude": ["node_modules", "**/*.spec.ts"],
+  "extends": "./tsconfig.extends.json"
+}
