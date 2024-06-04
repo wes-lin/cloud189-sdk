@@ -224,9 +224,14 @@ class CloudClient {
       .json();
   };
 
-  getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
+  getUserSizeInfo = (): Promise<any> => {
     return got
-      .get("https://cloud.189.cn/api/portal/getUserSizeInfo.action")
+      .get("https://cloud.189.cn/api/portal/getUserSizeInfo.action", {
+        headers: {
+          Accept: "application/json;charset=UTF-8",
+        },
+        cookieJar,
+      })
       .json();
   };
 

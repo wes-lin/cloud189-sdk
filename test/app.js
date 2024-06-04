@@ -32,4 +32,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       }
     }
   }
+  const info = await client.getUserSizeInfo();
+  console.log(info);
 })();
