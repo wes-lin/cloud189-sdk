@@ -1,5 +1,13 @@
 # cloud189-sdk
 
+``` bash
+npm i cloud189-sdk
+```
+or
+``` bash
+yarn add cloud189-sdk
+```
+
 ``` javascript
 const { CloudClient } = require("cloud189-sdk");
 
