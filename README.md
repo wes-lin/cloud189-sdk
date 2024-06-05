@@ -1,13 +1,13 @@
 # cloud189-sdk
 
 ``` javascript
-const { CloudClient } = require("../dist");
+const { CloudClient } = require("cloud189-sdk");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 (async () => {
   const client = new CloudClient(
-    process.env["TY_USER_NAME"],
-    process.env["TY_PASSWORD"]
+    'your username',
+    'your password'
   );
   await client.login();
   const t1 = await client.userSign();
