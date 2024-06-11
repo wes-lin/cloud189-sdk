@@ -1,6 +1,6 @@
 {
   "name": "cloud189-sdk",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "cloud189-sdk",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

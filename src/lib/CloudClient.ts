@@ -251,7 +251,7 @@ class CloudClient {
 
   taskPhoto = (): Promise<TaskResponse> => {
     return this.fetchAPI(
-      "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN"
+      "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN"
     );
   };
 
