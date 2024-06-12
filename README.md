@@ -1,11 +1,11 @@
 # cloud189-sdk
 
 ##  安装依赖
-```bash
+``` console
 npm i cloud189-sdk
 ```
 或者
-```bash
+``` console
 yarn add cloud189-sdk
 ```
 ## 测试代码
