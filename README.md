@@ -1,7 +1,7 @@
 # cloud189-sdk
 
 ##  安装依赖
-``` shell
+``` console
 npm i cloud189-sdk
 ```
 或者
