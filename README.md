@@ -1,11 +1,11 @@
 # cloud189-sdk
 
 ##  安装依赖
-``` bash
+``` console
 npm i cloud189-sdk
 ```
 或者
-``` bash
+``` console
 yarn add cloud189-sdk
 ```
 ## 测试代码
@@ -47,5 +47,4 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const info = await client.getUserSizeInfo();
   console.log(info);
 })();
-``
 ```
