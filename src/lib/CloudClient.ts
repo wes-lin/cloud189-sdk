@@ -255,6 +255,9 @@ class CloudClient {
     );
   };
 
+  /**
+   * @deprecated 任务无效， 1.0.3版本废弃
+   */
   taskKJ = (): Promise<TaskResponse> => {
     return this.fetchAPI(
       "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN"
