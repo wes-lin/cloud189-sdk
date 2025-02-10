@@ -4,7 +4,6 @@ import crypto from "crypto";
 import got from "got";
 import { CookieJar } from "tough-cookie";
 
-const cookieJar = new CookieJar();
 const config = {
   clientId: "538135150693412",
   model: "KB2000",
@@ -20,36 +19,37 @@ const headers = {
 };
 
 interface CacheQuery {
-  REQID;
-  lt;
+  appId: string;
+  reqId: string;
+  lt: string;
 }
 
 interface FamilyListResponse {
   familyInfoResp: [
     {
-      familyId;
+      familyId: number;
+      remarkName: string;
+      type: number;
+      userRole: number;
     }
   ];
 }
 
-interface APIResponse {
+interface LoginResponse {
   result: number;
   msg: string;
-}
-
-interface LoginResponse extends APIResponse {
   toUrl: string;
 }
 
-interface UserBriefInfoResponse extends APIResponse {
+interface UserBriefInfoResponse {
   sessionKey: string;
 }
 
-interface AccessTokenResponse extends APIResponse {
+interface AccessTokenResponse {
   accessToken: string;
 }
 
-interface FamilyUserSignResponse extends APIResponse {
+interface FamilyUserSignResponse {
   bonusSpace: number;
   signFamilyId: number;
   signStatus: number;
@@ -57,7 +57,7 @@ interface FamilyUserSignResponse extends APIResponse {
   userId: string;
 }
 
-interface UserSizeInfoResponse extends APIResponse {
+interface UserSizeInfoResponse {
   cloudCapacityInfo: {
     totalSize: number;
   };
@@ -76,15 +76,27 @@ interface TaskResponse {
   prizeName: string;
 }
 
+interface UserSizeInfoResponse {
+  account: string;
+  cloudCapacityInfo: {
+    totalSize: number;
+  };
+  familyCapacityInfo: {
+    totalSize: number;
+  };
+}
+
 class CloudClient {
   #accessToken = "";
   username: string;
   password: string;
   cacheQuery: CacheQuery;
+  cookieJar: CookieJar;
 
-  constructor(username, password) {
+  constructor(username: string, password: string) {
     this.username = username;
     this.password = password;
+    this.cookieJar = new CookieJar();
   }
 
   getEncrypt = (): Promise<any> =>
@@ -103,7 +115,7 @@ class CloudClient {
         .catch((e) => reject(e));
     });
 
-  appConf = (query): Promise<any> =>
+  appConf = (query: CacheQuery): Promise<any> =>
     got
       .post("https://open.e.189.cn/api/logbox/oauth2/appConf.do", {
         headers: {
@@ -191,7 +203,7 @@ class CloudClient {
                 "User-Agent":
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
                 Referer: "https://open.e.189.cn/",
-                REQID: this.cacheQuery.REQID,
+                REQID: this.cacheQuery.reqId,
                 lt: this.cacheQuery.lt,
               },
               form: data,
@@ -204,14 +216,14 @@ class CloudClient {
             reject(res.msg);
           } else {
             return got
-              .get(res.toUrl, { headers, cookieJar })
+              .get(res.toUrl, { headers, cookieJar: this.cookieJar })
               .then((r) => resolve(r.statusCode));
           }
         })
         .catch((e) => reject(e));
     });
 
-  fetchAPI = (task): Promise<any> => {
+  fetchAPI = (task: string): Promise<any> => {
     const q = url.parse(task, true);
     return got
       .get(task, {
@@ -219,18 +231,18 @@ class CloudClient {
           ...headers,
           Host: q.host,
         },
-        cookieJar,
+        cookieJar: this.cookieJar,
       })
       .json();
   };
 
-  getUserSizeInfo = (): Promise<any> => {
+  getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
     return got
       .get("https://cloud.189.cn/api/portal/getUserSizeInfo.action", {
         headers: {
           Accept: "application/json;charset=UTF-8",
         },
-        cookieJar,
+        cookieJar: this.cookieJar,
       })
       .json();
   };
@@ -243,12 +255,18 @@ class CloudClient {
     );
   };
 
+  /**
+   * @deprecated 任务无效， 1.0.4版本废弃
+   */
   taskSign = (): Promise<TaskResponse> => {
     return this.fetchAPI(
       "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN"
     );
   };
 
+  /**
+   * @deprecated 任务无效， 1.0.4版本废弃
+   */
   taskPhoto = (): Promise<TaskResponse> => {
     return this.fetchAPI(
       "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN"
@@ -267,11 +285,13 @@ class CloudClient {
   getUserBriefInfo = (): Promise<UserBriefInfoResponse> =>
     got
       .get("https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action", {
-        cookieJar,
+        cookieJar: this.cookieJar,
       })
       .json();
 
-  getAccessTokenBySsKey = (sessionKey): Promise<AccessTokenResponse> => {
+  getAccessTokenBySsKey = (
+    sessionKey: string
+  ): Promise<AccessTokenResponse> => {
     const appkey = "600100422";
     const time = String(Date.now());
     const signature = this.#getSignature({
@@ -289,13 +309,13 @@ class CloudClient {
             Timestamp: time,
             Appkey: appkey,
           },
-          cookieJar,
+          cookieJar: this.cookieJar,
         }
       )
       .json();
   };
 
-  fetchFamilyAPI = async (path): Promise<any> => {
+  fetchFamilyAPI = async (path: string): Promise<any> => {
     const { query } = url.parse(path, true);
     const time = String(Date.now());
     if (!this.#accessToken) {
@@ -317,7 +337,7 @@ class CloudClient {
           Accesstoken: this.#accessToken,
           Accept: "application/json;charset=UTF-8",
         },
-        cookieJar,
+        cookieJar: this.cookieJar,
       })
       .json();
   };
@@ -327,7 +347,7 @@ class CloudClient {
       "https://api.cloud.189.cn/open/family/manage/getFamilyList.action"
     );
 
-  familyUserSign = (familyId: string): Promise<FamilyUserSignResponse> => {
+  familyUserSign = (familyId: number): Promise<FamilyUserSignResponse> => {
     const gturl = `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`;
     return this.fetchFamilyAPI(gturl);
   };

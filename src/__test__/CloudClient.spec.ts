@@ -170,7 +170,7 @@ describe("家庭签到任务", async () => {
         userId: "23",
       });
     const client = new CloudClient("test", "password");
-    const res = await client.familyUserSign("1234");
+    const res = await client.familyUserSign(1234);
     expect(res.signStatus).eq(1);
   });
 });
