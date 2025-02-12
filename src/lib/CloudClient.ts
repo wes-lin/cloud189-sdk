@@ -114,6 +114,7 @@ class CloudClient {
       cookieJar: this.cookieJar,
       headers: {
         "User-Agent": `Mozilla/5.0 (Linux; U; Android 11; ${config.model} Build/RP1A.201005.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36 Ecloud/${config.version} Android/30 clientId/${config.clientId} clientModel/${config.model} clientChannelId/qq proVersion/1.0.6`,
+        Referer: "https://cloud.189.cn/web/main/",
       },
       hooks: {
         beforeRequest: [async (options) => {}],
@@ -122,11 +123,13 @@ class CloudClient {
   }
 
   getEncrypt = (): Promise<any> =>
-    got.post("https://open.e.189.cn/api/logbox/config/encryptConf.do").json();
+    this.client
+      .post("https://open.e.189.cn/api/logbox/config/encryptConf.do")
+      .json();
 
   redirectURL = () =>
     new Promise((resolve, reject) => {
-      got
+      this.client
         .get(
           "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action"
         )
@@ -137,17 +140,15 @@ class CloudClient {
         .catch((e) => reject(e));
     });
 
-  appConf = (query: CacheQuery): Promise<any> =>
-    got
+  appConf = (): Promise<any> =>
+    this.client
       .post("https://open.e.189.cn/api/logbox/oauth2/appConf.do", {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
           Referer: "https://open.e.189.cn/",
-          lt: query.lt,
-          REQID: query.reqId,
+          lt: this.#cacheQuery.lt,
+          REQID: this.#cacheQuery.reqId,
         },
-        form: { version: "2.0", appKey: query.appId },
+        form: { version: "2.0", appKey: this.#cacheQuery.appId },
       })
       .json();
 
@@ -211,7 +212,7 @@ class CloudClient {
         //2.获取登录参数
         this.redirectURL().then((query: CacheQuery) => {
           this.#cacheQuery = query;
-          return this.appConf(query);
+          return this.appConf();
         }),
       ])
         .then((res: any[]) => {
@@ -219,11 +220,9 @@ class CloudClient {
           const appConf = res[1].data;
           const data = this.#builLoginForm(encrypt, appConf);
           //3.获取登录地址
-          return got
+          return this.client
             .post("https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do", {
               headers: {
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
                 Referer: "https://open.e.189.cn/",
                 lt: this.#cacheQuery.lt,
                 REQID: this.#cacheQuery.reqId,
