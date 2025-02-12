@@ -1,7 +1,7 @@
 import url from "url";
 import JSEncrypt from "node-jsencrypt";
 import crypto from "crypto";
-import got from "got";
+import got, { Got } from "got";
 import { CookieJar } from "tough-cookie";
 
 const config = {
@@ -12,8 +12,6 @@ const config = {
 
 const headers = {
   "User-Agent": `Mozilla/5.0 (Linux; U; Android 11; ${config.model} Build/RP1A.201005.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36 Ecloud/${config.version} Android/30 clientId/${config.clientId} clientModel/${config.model} clientChannelId/qq proVersion/1.0.6`,
-  Referer:
-    "https://m.cloud.189.cn/zhuanti/2016/sign/index.jsp?albumBackupOpened=1",
   "Accept-Encoding": "gzip, deflate",
   Host: "cloud.189.cn",
 };
@@ -87,16 +85,47 @@ interface UserSizeInfoResponse {
 }
 
 class CloudClient {
-  #accessToken = "";
+  accessToken = "";
   username: string;
   password: string;
   cacheQuery: CacheQuery;
   cookieJar: CookieJar;
+  client: Got;
 
-  constructor(username: string, password: string) {
+  constructor(username: string, password: string, session?: {
+    accessToken?: string,
+    cookieJar?: CookieJar
+  }) {
     this.username = username;
     this.password = password;
-    this.cookieJar = new CookieJar();
+    this.#init(session)
+  }
+
+  #init(session?: {
+    accessToken?: string,
+    cookieJar?: CookieJar
+  }){
+    if(session?.cookieJar) {
+      this.cookieJar = session.cookieJar
+    }
+    if(session?.accessToken) {
+      this.accessToken = session.accessToken
+    }
+    if(!this.cookieJar) {
+      this.cookieJar = new CookieJar()
+    }
+    this.client = got.extend({
+      hooks: {
+        beforeRequest: [
+          async (options) => {
+            options.headers = {
+              ...headers,
+            }
+            options.cookieJar = this.cookieJar
+          }
+        ]
+      }
+    })
   }
 
   getEncrypt = (): Promise<any> =>
@@ -223,71 +252,23 @@ class CloudClient {
         .catch((e) => reject(e));
     });
 
-  fetchAPI = (task: string): Promise<any> => {
-    const q = url.parse(task, true);
-    return got
-      .get(task, {
-        headers: {
-          ...headers,
-          Host: q.host,
-        },
-        cookieJar: this.cookieJar,
-      })
-      .json();
-  };
-
   getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
-    return got
-      .get("https://cloud.189.cn/api/portal/getUserSizeInfo.action", {
-        headers: {
-          Accept: "application/json;charset=UTF-8",
-        },
-        cookieJar: this.cookieJar,
-      })
+    return this.client.get("https://cloud.189.cn/api/portal/getUserSizeInfo.action")
       .json();
   };
 
   userSign = (): Promise<UserSignResponse> => {
-    return this.fetchAPI(
+    return this.client.get(
       `https://cloud.189.cn/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
         config.version
       }&model=${config.model}`
-    );
+    ).json();
   };
 
-  /**
-   * @deprecated 任务无效， 1.0.4版本废弃
-   */
-  taskSign = (): Promise<TaskResponse> => {
-    return this.fetchAPI(
-      "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN"
-    );
-  };
-
-  /**
-   * @deprecated 任务无效， 1.0.4版本废弃
-   */
-  taskPhoto = (): Promise<TaskResponse> => {
-    return this.fetchAPI(
-      "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN"
-    );
-  };
-
-  /**
-   * @deprecated 任务无效， 1.0.3版本废弃
-   */
-  taskKJ = (): Promise<TaskResponse> => {
-    return this.fetchAPI(
-      "https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN"
-    );
-  };
-
-  getUserBriefInfo = (): Promise<UserBriefInfoResponse> =>
-    got
-      .get("https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action", {
-        cookieJar: this.cookieJar,
-      })
-      .json();
+  getUserBriefInfo = (): Promise<UserBriefInfoResponse> => {
+    return this.client.get("https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action")
+      .json()
+    };
 
   getAccessTokenBySsKey = (
     sessionKey: string
@@ -299,8 +280,7 @@ class CloudClient {
       Timestamp: time,
       AppKey: appkey,
     });
-    return got
-      .get(
+    return this.client.get(
         `https://cloud.189.cn/api/open/oauth2/getAccessTokenBySsKey.action?sessionKey=${sessionKey}`,
         {
           headers: {
@@ -308,8 +288,7 @@ class CloudClient {
             Signature: signature,
             Timestamp: time,
             Appkey: appkey,
-          },
-          cookieJar: this.cookieJar,
+          }
         }
       )
       .json();
@@ -318,15 +297,15 @@ class CloudClient {
   fetchFamilyAPI = async (path: string): Promise<any> => {
     const { query } = url.parse(path, true);
     const time = String(Date.now());
-    if (!this.#accessToken) {
+    if (!this.accessToken) {
       const { sessionKey } = await this.getUserBriefInfo();
       const { accessToken } = await this.getAccessTokenBySsKey(sessionKey);
-      this.#accessToken = accessToken;
+      this.accessToken = accessToken;
     }
     const signature = this.#getSignature({
       ...query,
       Timestamp: time,
-      AccessToken: this.#accessToken,
+      AccessToken: this.accessToken,
     });
     return got
       .get(path, {
@@ -334,7 +313,7 @@ class CloudClient {
           "Sign-Type": "1",
           Signature: signature,
           Timestamp: time,
-          Accesstoken: this.#accessToken,
+          Accesstoken: this.accessToken,
           Accept: "application/json;charset=UTF-8",
         },
         cookieJar: this.cookieJar,
