@@ -88,7 +88,7 @@ class CloudClient {
   accessToken = "";
   username: string;
   password: string;
-  cacheQuery: CacheQuery;
+  #cacheQuery: CacheQuery;
   cookieJar: CookieJar;
   client: Got;
 
@@ -133,7 +133,7 @@ class CloudClient {
 
   redirectURL = () =>
     new Promise((resolve, reject) => {
-      got
+      this.client
         .get(
           "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action"
         )
@@ -145,12 +145,9 @@ class CloudClient {
     });
 
   appConf = (query: CacheQuery): Promise<any> =>
-    got
+    this.client
       .post("https://open.e.189.cn/api/logbox/oauth2/appConf.do", {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
-          Referer: "https://open.e.189.cn/",
           lt: query.lt,
           REQID: query.reqId,
         },
@@ -217,7 +214,7 @@ class CloudClient {
         this.getEncrypt(),
         //2.获取登录参数
         this.redirectURL().then((query: CacheQuery) => {
-          this.cacheQuery = query;
+          this.#cacheQuery = query;
           return this.appConf(query);
         }),
       ])
@@ -226,14 +223,11 @@ class CloudClient {
           const appConf = res[1].data;
           const data = this.#builLoginForm(encrypt, appConf);
           //3.获取登录地址
-          return got
+          return this.client
             .post("https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do", {
               headers: {
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
-                Referer: "https://open.e.189.cn/",
-                REQID: this.cacheQuery.reqId,
-                lt: this.cacheQuery.lt,
+                REQID: this.#cacheQuery.reqId,
+                lt: this.#cacheQuery.lt,
               },
               form: data,
             })

@@ -9,16 +9,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await client.login();
   const t1 = await client.userSign();
   console.log(t1);
-  await delay(5000);
-  const t2 = await client.taskSign();
-  console.log(t2);
-  await delay(5000);
-  const t3 = await client.taskPhoto();
-  console.log(t3);
-  await delay(5000);
-  const t4 = await client.taskKJ();
-  await delay(5000);
-  console.log(t4);
   const { familyInfoResp } = await client.getFamilyList();
   console.log(familyInfoResp);
   if (familyInfoResp) {
