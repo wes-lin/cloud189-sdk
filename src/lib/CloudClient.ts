@@ -10,12 +10,6 @@ const config = {
   version: "9.0.6",
 };
 
-const headers = {
-  "User-Agent": `Mozilla/5.0 (Linux; U; Android 11; ${config.model} Build/RP1A.201005.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36 Ecloud/${config.version} Android/30 clientId/${config.clientId} clientModel/${config.model} clientChannelId/qq proVersion/1.0.6`,
-  "Accept-Encoding": "gzip, deflate",
-  Host: "cloud.189.cn",
-};
-
 interface CacheQuery {
   appId: string;
   reqId: string;
@@ -45,6 +39,7 @@ interface UserBriefInfoResponse {
 
 interface AccessTokenResponse {
   accessToken: string;
+  expiresIn: number;
 }
 
 interface FamilyUserSignResponse {
@@ -92,40 +87,38 @@ class CloudClient {
   cookieJar: CookieJar;
   client: Got;
 
-  constructor(username: string, password: string, session?: {
-    accessToken?: string,
-    cookieJar?: CookieJar
-  }) {
+  constructor(
+    username: string,
+    password: string,
+    session?: {
+      accessToken?: string;
+      cookieJar?: CookieJar;
+    }
+  ) {
     this.username = username;
     this.password = password;
-    this.#init(session)
+    this.#init(session);
   }
 
-  #init(session?: {
-    accessToken?: string,
-    cookieJar?: CookieJar
-  }){
-    if(session?.cookieJar) {
-      this.cookieJar = session.cookieJar
+  #init(session?: { accessToken?: string; cookieJar?: CookieJar }) {
+    if (session?.cookieJar) {
+      this.cookieJar = session.cookieJar;
+    } else {
+      this.cookieJar = new CookieJar();
     }
-    if(session?.accessToken) {
-      this.accessToken = session.accessToken
+    if (session?.accessToken) {
+      this.accessToken = session.accessToken;
     }
-    if(!this.cookieJar) {
-      this.cookieJar = new CookieJar()
-    }
+
     this.client = got.extend({
+      cookieJar: this.cookieJar,
+      headers: {
+        "User-Agent": `Mozilla/5.0 (Linux; U; Android 11; ${config.model} Build/RP1A.201005.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36 Ecloud/${config.version} Android/30 clientId/${config.clientId} clientModel/${config.model} clientChannelId/qq proVersion/1.0.6`,
+      },
       hooks: {
-        beforeRequest: [
-          async (options) => {
-            options.headers = {
-              ...headers,
-            }
-            options.cookieJar = this.cookieJar
-          }
-        ]
-      }
-    })
+        beforeRequest: [async (options) => {}],
+      },
+    });
   }
 
   getEncrypt = (): Promise<any> =>
@@ -133,7 +126,7 @@ class CloudClient {
 
   redirectURL = () =>
     new Promise((resolve, reject) => {
-      this.client
+      got
         .get(
           "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action"
         )
@@ -145,9 +138,12 @@ class CloudClient {
     });
 
   appConf = (query: CacheQuery): Promise<any> =>
-    this.client
+    got
       .post("https://open.e.189.cn/api/logbox/oauth2/appConf.do", {
         headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
+          Referer: "https://open.e.189.cn/",
           lt: query.lt,
           REQID: query.reqId,
         },
@@ -223,11 +219,14 @@ class CloudClient {
           const appConf = res[1].data;
           const data = this.#builLoginForm(encrypt, appConf);
           //3.获取登录地址
-          return this.client
+          return got
             .post("https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do", {
               headers: {
-                REQID: this.#cacheQuery.reqId,
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
+                Referer: "https://open.e.189.cn/",
                 lt: this.#cacheQuery.lt,
+                REQID: this.#cacheQuery.reqId,
               },
               form: data,
             })
@@ -238,8 +237,8 @@ class CloudClient {
           if (res.result !== 0) {
             reject(res.msg);
           } else {
-            return got
-              .get(res.toUrl, { headers, cookieJar: this.cookieJar })
+            return this.client
+              .get(res.toUrl)
               .then((r) => resolve(r.statusCode));
           }
         })
@@ -247,22 +246,28 @@ class CloudClient {
     });
 
   getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
-    return this.client.get("https://cloud.189.cn/api/portal/getUserSizeInfo.action")
+    return this.client
+      .get("https://cloud.189.cn/api/portal/getUserSizeInfo.action", {
+        headers: { Accept: "application/json;charset=UTF-8" },
+      })
       .json();
   };
 
   userSign = (): Promise<UserSignResponse> => {
-    return this.client.get(
-      `https://cloud.189.cn/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
-        config.version
-      }&model=${config.model}`
-    ).json();
+    return this.client
+      .get(
+        `https://cloud.189.cn/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
+          config.version
+        }&model=${config.model}`
+      )
+      .json();
   };
 
   getUserBriefInfo = (): Promise<UserBriefInfoResponse> => {
-    return this.client.get("https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action")
-      .json()
-    };
+    return this.client
+      .get("https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action")
+      .json();
+  };
 
   getAccessTokenBySsKey = (
     sessionKey: string
@@ -274,7 +279,8 @@ class CloudClient {
       Timestamp: time,
       AppKey: appkey,
     });
-    return this.client.get(
+    return this.client
+      .get(
         `https://cloud.189.cn/api/open/oauth2/getAccessTokenBySsKey.action?sessionKey=${sessionKey}`,
         {
           headers: {
@@ -282,7 +288,7 @@ class CloudClient {
             Signature: signature,
             Timestamp: time,
             Appkey: appkey,
-          }
+          },
         }
       )
       .json();
@@ -301,7 +307,7 @@ class CloudClient {
       Timestamp: time,
       AccessToken: this.accessToken,
     });
-    return got
+    return this.client
       .get(path, {
         headers: {
           "Sign-Type": "1",
@@ -310,7 +316,6 @@ class CloudClient {
           Accesstoken: this.accessToken,
           Accept: "application/json;charset=UTF-8",
         },
-        cookieJar: this.cookieJar,
       })
       .json();
   };
@@ -320,10 +325,10 @@ class CloudClient {
       "https://api.cloud.189.cn/open/family/manage/getFamilyList.action"
     );
 
-  familyUserSign = (familyId: number): Promise<FamilyUserSignResponse> => {
-    const gturl = `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`;
-    return this.fetchFamilyAPI(gturl);
-  };
+  familyUserSign = (familyId: number): Promise<FamilyUserSignResponse> =>
+    this.fetchFamilyAPI(
+      `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`
+    );
 }
 
 export default CloudClient;
