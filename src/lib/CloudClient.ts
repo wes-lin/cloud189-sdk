@@ -1,7 +1,7 @@
 import url from "url";
 import JSEncrypt from "node-jsencrypt";
 import crypto from "crypto";
-import got, { Got } from "got";
+import got, { Got, HTTPError } from "got";
 import { CookieJar } from "tough-cookie";
 
 const config = {
@@ -161,19 +161,24 @@ class CloudClient {
               const { errorCode } = JSON.parse(response.body.toString()) as {
                 errorCode: string;
               };
-              console.log(response.url);
               if (errorCode === "InvalidAccessToken") {
                 console.log("InvalidAccessToken retry");
                 this.accessToken = undefined;
                 this.sessionKey = undefined;
                 return retryWithMergedOptions({});
               } else if (errorCode === "InvalidSessionKey") {
-                console.log("InvalidSessionKey retry");
                 this.cookieJar = new CookieJar();
                 this.sessionKey = undefined;
                 this.accessToken = undefined;
                 await this.login();
-                return retryWithMergedOptions({});
+                if (response.url.includes("getAccessTokenBySsKey.action")) {
+                  console.log("InvalidSessionKey retry");
+                  response.statusCode = 401;
+                  return response;
+                } else {
+                  console.log("InvalidCookie retry");
+                  return retryWithMergedOptions({});
+                }
               }
             }
             return response;
@@ -183,7 +188,6 @@ class CloudClient {
           (options, error, retryCount) => {
             // This will be called on `retryWithMergedOptions(...)`
             console.log("retry.....");
-            console.log(options);
           },
         ],
       },
@@ -274,6 +278,7 @@ class CloudClient {
    * */
   login = (): Promise<any> =>
     new Promise((resolve, reject) => {
+      console.log("login...");
       Promise.all([
         //1.获取公钥
         this.getEncrypt(),
@@ -312,13 +317,29 @@ class CloudClient {
         .catch((e) => reject(e));
     });
 
+  getNewSessionKey = async () => {
+    const { sessionKey } = await this.getUserBriefInfo();
+    this.sessionKey = sessionKey;
+  };
+
   getNewToken = async () => {
     if (!this.sessionKey) {
-      const { sessionKey } = await this.getUserBriefInfo();
-      this.sessionKey = sessionKey;
+      await this.getNewSessionKey();
     }
-    const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey);
-    this.accessToken = accessToken;
+    try {
+      const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey);
+      this.accessToken = accessToken;
+    } catch (e) {
+      if (e instanceof HTTPError && e.response.statusCode === 401) {
+        await this.getNewSessionKey();
+        const { accessToken } = await this.getAccessTokenBySsKey(
+          this.sessionKey
+        );
+        this.accessToken = accessToken;
+      } else {
+        throw e;
+      }
+    }
   };
 
   getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
