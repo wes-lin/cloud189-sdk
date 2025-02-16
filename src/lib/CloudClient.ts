@@ -81,6 +81,7 @@ interface UserSizeInfoResponse {
 
 class CloudClient {
   accessToken = "";
+  sessionKey = "";
   username: string;
   password: string;
   #cacheQuery: CacheQuery;
@@ -92,32 +93,99 @@ class CloudClient {
     password: string,
     session?: {
       accessToken?: string;
+      sessionKey?: string;
       cookieJar?: CookieJar;
     }
   ) {
     this.username = username;
     this.password = password;
-    this.#init(session);
+    if (session) {
+      this.#init(session);
+    }
   }
 
-  #init(session?: { accessToken?: string; cookieJar?: CookieJar }) {
-    if (session?.cookieJar) {
+  #init(session: {
+    accessToken?: string;
+    sessionKey?: string;
+    cookieJar?: CookieJar;
+  }) {
+    if (session.cookieJar) {
       this.cookieJar = session.cookieJar;
     } else {
       this.cookieJar = new CookieJar();
     }
-    if (session?.accessToken) {
+    if (session.accessToken) {
       this.accessToken = session.accessToken;
+    }
+    if (session.sessionKey) {
+      this.sessionKey = session.sessionKey;
     }
 
     this.client = got.extend({
       cookieJar: this.cookieJar,
+      retry: {
+        limit: 5,
+      },
       headers: {
         "User-Agent": `Mozilla/5.0 (Linux; U; Android 11; ${config.model} Build/RP1A.201005.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36 Ecloud/${config.version} Android/30 clientId/${config.clientId} clientModel/${config.model} clientChannelId/qq proVersion/1.0.6`,
         Referer: "https://cloud.189.cn/web/main/",
       },
       hooks: {
-        beforeRequest: [async (options) => {}],
+        beforeRequest: [
+          async (options) => {
+            switch (options.url.host) {
+              case "api.cloud.189.cn":
+                if (!this.accessToken) {
+                  await this.getNewToken();
+                }
+                const { query } = url.parse(options.url.toString(), true);
+                const time = String(Date.now());
+                const signature = this.#getSignature({
+                  ...(options.method === "GET" ? query : options.json),
+                  Timestamp: time,
+                  AccessToken: this.accessToken,
+                });
+                options.headers["Sign-Type"] = "1";
+                options.headers["Signature"] = signature;
+                options.headers["Timestamp"] = time;
+                options.headers["Accesstoken"] = this.accessToken;
+                options.headers["Accept"] = "application/json;charset=UTF-8";
+                break;
+              default:
+            }
+          },
+        ],
+        afterResponse: [
+          async (response, retryWithMergedOptions) => {
+            if (response.statusCode === 400) {
+              const { errorCode } = JSON.parse(response.body.toString()) as {
+                errorCode: string;
+              };
+              console.log(response.url);
+              if (errorCode === "InvalidAccessToken") {
+                console.log("InvalidAccessToken retry");
+                this.accessToken = undefined;
+                this.sessionKey = undefined;
+                return retryWithMergedOptions({});
+              } else if (errorCode === "InvalidSessionKey") {
+                console.log("InvalidSessionKey retry");
+                this.cookieJar = new CookieJar();
+                this.sessionKey = undefined;
+                this.accessToken = undefined;
+                await this.login();
+                return retryWithMergedOptions({});
+              }
+            }
+            return response;
+          },
+        ],
+        beforeRetry: [
+          (options, error, retryCount) => {
+            // This will be called on `retryWithMergedOptions(...)`
+            console.log("retry.....");
+            console.log(options);
+          },
+        ],
       },
     });
   }
@@ -244,6 +312,15 @@ class CloudClient {
         .catch((e) => reject(e));
     });
 
+  getNewToken = async () => {
+    if (!this.sessionKey) {
+      const { sessionKey } = await this.getUserBriefInfo();
+      this.sessionKey = sessionKey;
+    }
+    const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey);
+    this.accessToken = accessToken;
+  };
+
   getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
     return this.client
       .get("https://cloud.189.cn/api/portal/getUserSizeInfo.action", {
@@ -293,41 +370,17 @@ class CloudClient {
       .json();
   };
 
-  fetchFamilyAPI = async (path: string): Promise<any> => {
-    const { query } = url.parse(path, true);
-    const time = String(Date.now());
-    if (!this.accessToken) {
-      const { sessionKey } = await this.getUserBriefInfo();
-      const { accessToken } = await this.getAccessTokenBySsKey(sessionKey);
-      this.accessToken = accessToken;
-    }
-    const signature = this.#getSignature({
-      ...query,
-      Timestamp: time,
-      AccessToken: this.accessToken,
-    });
-    return this.client
-      .get(path, {
-        headers: {
-          "Sign-Type": "1",
-          Signature: signature,
-          Timestamp: time,
-          Accesstoken: this.accessToken,
-          Accept: "application/json;charset=UTF-8",
-        },
-      })
-      .json();
-  };
-
   getFamilyList = (): Promise<FamilyListResponse> =>
-    this.fetchFamilyAPI(
-      "https://api.cloud.189.cn/open/family/manage/getFamilyList.action"
-    );
+    this.client
+      .get("https://api.cloud.189.cn/open/family/manage/getFamilyList.action")
+      .json();
 
   familyUserSign = (familyId: number): Promise<FamilyUserSignResponse> =>
-    this.fetchFamilyAPI(
-      `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`
-    );
+    this.client
+      .get(
+        `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`
+      )
+      .json();
 }
 
 export default CloudClient;
