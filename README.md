@@ -1,14 +1,19 @@
 # cloud189-sdk
 
-##  安装依赖
+## 安装依赖
+
 ``` console
 npm i cloud189-sdk
 ```
+
 或者
+
 ``` console
 yarn add cloud189-sdk
 ```
+
 ## 测试代码
+
 ``` javascript
 const { CloudClient } = require("cloud189-sdk");
 

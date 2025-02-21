@@ -1,3 +1,6 @@
-import CloudClient from "./CloudClient";
+import * as client from './CloudClient'
 
-export { CloudClient };
+/**
+ * @public
+ */
+export default client

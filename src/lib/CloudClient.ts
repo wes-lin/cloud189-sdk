@@ -16,7 +16,10 @@ interface CacheQuery {
   lt: string
 }
 
-interface FamilyListResponse {
+/**
+ * @public
+ */
+export interface FamilyListResponse {
   familyInfoResp: [
     {
       familyId: number
@@ -33,16 +36,25 @@ interface LoginResponse {
   toUrl: string
 }
 
-interface UserBriefInfoResponse {
+/**
+ * @public
+ */
+export interface UserBriefInfoResponse {
   sessionKey: string
 }
 
-interface AccessTokenResponse {
+/**
+ * @public
+ */
+export interface AccessTokenResponse {
   accessToken: string
   expiresIn: number
 }
 
-interface FamilyUserSignResponse {
+/**
+ * @public
+ */
+export interface FamilyUserSignResponse {
   bonusSpace: number
   signFamilyId: number
   signStatus: number
@@ -50,7 +62,10 @@ interface FamilyUserSignResponse {
   userId: string
 }
 
-interface UserSizeInfoResponse {
+/**
+ * @public
+ */
+export interface UserSizeInfoResponse {
   cloudCapacityInfo: {
     totalSize: number
   }
@@ -59,51 +74,59 @@ interface UserSizeInfoResponse {
   }
 }
 
-interface UserSignResponse {
+/**
+ * @public
+ */
+export interface UserSignResponse {
   isSign: boolean
   netdiskBonus: number
 }
 
-interface TaskResponse {
+/**
+ * @public
+ */
+export interface TaskResponse {
   errorCode: string
   prizeName: string
 }
 
-interface UserSizeInfoResponse {
-  account: string
-  cloudCapacityInfo: {
-    totalSize: number
-  }
-  familyCapacityInfo: {
-    totalSize: number
-  }
+/**
+ * @public
+ */
+export interface Options {
+  username?: string
+  password?: string
+  cookie?: CookieJar
+  accessToken?: string
+  sessionKey?: string
 }
 
-class CloudClient {
+/**
+ * The cloudClient class
+ * @public
+ */
+export class CloudClient {
   accessToken = ''
   sessionKey = ''
   username: string
   password: string
   #cacheQuery: CacheQuery
-  cookieJar: CookieJar
+  cookie: CookieJar
   readonly client: Got
 
-  constructor(
-    username: string,
-    password: string,
-    session?: {
-      accessToken?: string
-      sessionKey?: string
-      cookieJar?: CookieJar
-    }
-  ) {
-    this.username = username
-    this.password = password
-    if (session) {
-      this.#init(session)
+  constructor(options: Options) {
+    this.#valid(options)
+    this.username = options.username
+    this.password = options.password
+    this.accessToken = options.accessToken
+    this.sessionKey = options.sessionKey
+    if (options.cookie) {
+      this.cookie = options.cookie
+    } else {
+      this.cookie = new CookieJar()
     }
     this.client = got.extend({
-      cookieJar: this.cookieJar,
+      cookieJar: this.cookie,
       retry: {
         limit: 5
       },
@@ -145,7 +168,7 @@ class CloudClient {
                 this.sessionKey = undefined
                 return retryWithMergedOptions({})
               } else if (errorCode === 'InvalidSessionKey') {
-                this.cookieJar = new CookieJar()
+                this.cookie = new CookieJar()
                 this.sessionKey = undefined
                 this.accessToken = undefined
                 await this.login()
@@ -172,17 +195,10 @@ class CloudClient {
     })
   }
 
-  #init(session: { accessToken?: string; sessionKey?: string; cookieJar?: CookieJar }) {
-    if (session.cookieJar) {
-      this.cookieJar = session.cookieJar
-    } else {
-      this.cookieJar = new CookieJar()
-    }
-    if (session.accessToken) {
-      this.accessToken = session.accessToken
-    }
-    if (session.sessionKey) {
-      this.sessionKey = session.sessionKey
+  #valid = (options: Options) => {
+    if (!options.cookie && (!options.username || !options.password)) {
+      console.log('valid')
+      throw new Error('Please provide username and password or Cookie')
     }
   }
 
@@ -406,5 +422,3 @@ class CloudClient {
       )
       .json()
 }
-
-export default CloudClient

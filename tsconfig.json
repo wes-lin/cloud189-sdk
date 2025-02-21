@@ -7,7 +7,7 @@
     "declaration": true
   },
   "ts-node": { "esm": true },
-  "include": ["src/lib/**/*"],
-  "exclude": ["node_modules", "**/*.spec.ts"],
+  "include": ["src/lib/**/*.ts"],
+  "exclude": ["node_modules"],
   "extends": "./tsconfig.extends.json"
 }
