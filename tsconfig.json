@@ -4,10 +4,9 @@
     "module": "CommonJS",
     "esModuleInterop": true,
     "outDir": "dist",
-    "declaration": true
+    "declaration": true,
   },
   "ts-node": { "esm": true },
   "include": ["src/lib/**/*.ts"],
   "exclude": ["node_modules"],
-  "extends": "./tsconfig.extends.json"
 }
