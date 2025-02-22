@@ -94,10 +94,15 @@ export interface TaskResponse {
  * @public
  */
 export interface Options {
+  /** 登录名 */
   username?: string
+  /** 密码 */
   password?: string
+  /** 登录的cookie,如不传用户名和密码时需要传入 */
   cookie?: CookieJar
+  /** 默认可以自己获取也可以传入,一些API需要 */
   accessToken?: string
+  /** 默认可以自己获取也可以传入,用于获取accessToken */
   sessionKey?: string
 }
 
@@ -114,14 +119,14 @@ export class CloudClient {
   cookie: CookieJar
   readonly client: Got
 
-  constructor(options: Options) {
-    this.#valid(options)
-    this.username = options.username
-    this.password = options.password
-    this.accessToken = options.accessToken
-    this.sessionKey = options.sessionKey
-    if (options.cookie) {
-      this.cookie = options.cookie
+  constructor(_options: Options) {
+    this.#valid(_options)
+    this.username = _options.username
+    this.password = _options.password
+    this.accessToken = _options.accessToken
+    this.sessionKey = _options.sessionKey
+    if (_options.cookie) {
+      this.cookie = _options.cookie
     } else {
       this.cookie = new CookieJar()
     }
@@ -202,11 +207,20 @@ export class CloudClient {
     }
   }
 
-  getEncrypt = (): Promise<any> =>
-    this.client.post('https://open.e.189.cn/api/logbox/config/encryptConf.do').json()
+  /**
+   * 获取加密参数
+   * @returns
+   */
+  getEncrypt(): Promise<any> {
+    return this.client.post('https://open.e.189.cn/api/logbox/config/encryptConf.do').json()
+  }
 
-  redirectURL = () =>
-    new Promise((resolve, reject) => {
+  /**
+   * 跳转到登录页面
+   * @returns 登录的参数
+   */
+  redirectURL(): Promise<any> {
+    return new Promise((resolve, reject) => {
       this.client
         .get(
           'https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action'
@@ -217,7 +231,12 @@ export class CloudClient {
         })
         .catch((e) => reject(e))
     })
+  }
 
+  /**
+   * 获取登录的参数
+   * @returns
+   */
   appConf = (): Promise<any> =>
     this.client
       .post('https://open.e.189.cn/api/logbox/oauth2/appConf.do', {
@@ -270,14 +289,16 @@ export class CloudClient {
   }
 
   /**
-   * 登录流程
-   * 1.获取公钥
-   * 2.获取登录参数
-   * 3.获取登录地址
-   * 4.跳转到登录页
+   * 用户名密码登录
    * */
-  login = (): Promise<any> =>
-    new Promise((resolve, reject) => {
+  login(): Promise<any> {
+    /**
+     * 1.获取公钥
+     * 2.获取登录参数
+     * 3.获取登录地址
+     * 4.跳转到登录页
+     */
+    return new Promise((resolve, reject) => {
       console.log('login...')
       Promise.all([
         //1.获取公钥
@@ -314,13 +335,23 @@ export class CloudClient {
         })
         .catch((e) => reject(e))
     })
-
-  getNewSessionKey = async () => {
-    const { sessionKey } = await this.getUserBriefInfo()
-    this.sessionKey = sessionKey
   }
 
-  getNewToken = async () => {
+  /**
+   * 获取新的 sessionKey
+   * @returns sessionKey
+   */
+  async getNewSessionKey() {
+    const { sessionKey } = await this.getUserBriefInfo()
+    this.sessionKey = sessionKey
+    return sessionKey
+  }
+
+  /**
+   * 获取新的 accessToken
+   * @returns accessToken
+   */
+  async getNewToken() {
     if (!this.sessionKey) {
       await this.getNewSessionKey()
     }
@@ -336,9 +367,14 @@ export class CloudClient {
         throw e
       }
     }
+    return this.accessToken
   }
 
-  getUserSizeInfo = (): Promise<UserSizeInfoResponse> => {
+  /**
+   * 获取用户网盘存储容量信息
+   * @returns
+   */
+  getUserSizeInfo(): Promise<UserSizeInfoResponse> {
     return this.client
       .get('https://cloud.189.cn/api/portal/getUserSizeInfo.action', {
         headers: { Accept: 'application/json;charset=UTF-8' }
@@ -346,7 +382,11 @@ export class CloudClient {
       .json()
   }
 
-  userSign = (): Promise<UserSignResponse> => {
+  /**
+   * 个人用户签到任务
+   * @returns 签到结果
+   */
+  userSign(): Promise<UserSignResponse> {
     return this.client
       .get(
         `https://cloud.189.cn/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
@@ -359,7 +399,7 @@ export class CloudClient {
   /**
    * @deprecated 任务无效， 1.0.4版本废弃
    */
-  taskSign = (): Promise<TaskResponse> => {
+  taskSign(): Promise<TaskResponse> {
     return this.client(
       'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN'
     ).json()
@@ -368,7 +408,7 @@ export class CloudClient {
   /**
    * @deprecated 任务无效， 1.0.4版本废弃
    */
-  taskPhoto = (): Promise<TaskResponse> => {
+  taskPhoto(): Promise<TaskResponse> {
     return this.client(
       'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN'
     ).json()
@@ -377,7 +417,7 @@ export class CloudClient {
   /**
    * @deprecated 任务无效， 1.0.3版本废弃
    */
-  taskKJ = (): Promise<TaskResponse> => {
+  taskKJ(): Promise<TaskResponse> {
     return this.client
       .get(
         'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN'
@@ -385,11 +425,19 @@ export class CloudClient {
       .json()
   }
 
-  getUserBriefInfo = (): Promise<UserBriefInfoResponse> => {
+  /**
+   * 获取 sessionKey
+   * @returns 用户session
+   */
+  getUserBriefInfo(): Promise<UserBriefInfoResponse> {
     return this.client.get('https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action').json()
   }
 
-  getAccessTokenBySsKey = (sessionKey: string): Promise<AccessTokenResponse> => {
+  /**
+   * 获取 accessToken
+   * @param sessionKey - sessionKey
+   */
+  getAccessTokenBySsKey(sessionKey: string): Promise<AccessTokenResponse> {
     const appkey = '600100422'
     const time = String(Date.now())
     const signature = this.#getSignature({
@@ -412,13 +460,26 @@ export class CloudClient {
       .json()
   }
 
-  getFamilyList = (): Promise<FamilyListResponse> =>
-    this.client.get('https://api.cloud.189.cn/open/family/manage/getFamilyList.action').json()
+  /**
+   * 获取家庭信息
+   * @returns 家庭列表信息
+   */
+  getFamilyList(): Promise<FamilyListResponse> {
+    return this.client
+      .get('https://api.cloud.189.cn/open/family/manage/getFamilyList.action')
+      .json()
+  }
 
-  familyUserSign = (familyId: number): Promise<FamilyUserSignResponse> =>
-    this.client
+  /**
+   * 家庭签到任务
+   * @param familyId - 家庭id
+   * @returns 签到结果
+   */
+  familyUserSign(familyId: number): Promise<FamilyUserSignResponse> {
+    return this.client
       .get(
         `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`
       )
       .json()
+  }
 }
