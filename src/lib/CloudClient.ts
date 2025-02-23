@@ -3,6 +3,16 @@ import JSEncrypt from 'node-jsencrypt'
 import crypto from 'crypto'
 import got, { Got, HTTPError } from 'got'
 import { CookieJar } from 'tough-cookie'
+import {
+  UserSignResponse,
+  UserSizeInfoResponse,
+  UserBriefInfoResponse,
+  UserTaskResponse,
+  AccessTokenResponse,
+  FamilyListResponse,
+  FamilyUserSignResponse,
+  Options
+} from './types'
 
 const config = {
   clientId: '538135150693412',
@@ -16,20 +26,6 @@ interface CacheQuery {
   lt: string
 }
 
-/**
- * @public
- */
-export interface FamilyListResponse {
-  familyInfoResp: [
-    {
-      familyId: number
-      remarkName: string
-      type: number
-      userRole: number
-    }
-  ]
-}
-
 interface LoginResponse {
   result: number
   msg: string
@@ -37,77 +33,7 @@ interface LoginResponse {
 }
 
 /**
- * @public
- */
-export interface UserBriefInfoResponse {
-  sessionKey: string
-}
-
-/**
- * @public
- */
-export interface AccessTokenResponse {
-  accessToken: string
-  expiresIn: number
-}
-
-/**
- * @public
- */
-export interface FamilyUserSignResponse {
-  bonusSpace: number
-  signFamilyId: number
-  signStatus: number
-  signTime: string
-  userId: string
-}
-
-/**
- * @public
- */
-export interface UserSizeInfoResponse {
-  cloudCapacityInfo: {
-    totalSize: number
-  }
-  familyCapacityInfo: {
-    totalSize: number
-  }
-}
-
-/**
- * @public
- */
-export interface UserSignResponse {
-  isSign: boolean
-  netdiskBonus: number
-}
-
-/**
- * @public
- */
-export interface TaskResponse {
-  errorCode: string
-  prizeName: string
-}
-
-/**
- * @public
- */
-export interface Options {
-  /** 登录名 */
-  username?: string
-  /** 密码 */
-  password?: string
-  /** 登录的cookie,如不传用户名和密码时需要传入 */
-  cookie?: CookieJar
-  /** 默认可以自己获取也可以传入,一些API需要 */
-  accessToken?: string
-  /** 默认可以自己获取也可以传入,用于获取accessToken */
-  sessionKey?: string
-}
-
-/**
- * The cloudClient class
+ * 天翼网盘客户端
  * @public
  */
 export class CloudClient {
@@ -117,7 +43,7 @@ export class CloudClient {
   password: string
   #cacheQuery: CacheQuery
   cookie: CookieJar
-  readonly client: Got
+  readonly request: Got
 
   constructor(_options: Options) {
     this.#valid(_options)
@@ -130,7 +56,7 @@ export class CloudClient {
     } else {
       this.cookie = new CookieJar()
     }
-    this.client = got.extend({
+    this.request = got.extend({
       cookieJar: this.cookie,
       retry: {
         limit: 5
@@ -144,7 +70,7 @@ export class CloudClient {
           async (options) => {
             if (options.url.host === 'cloud.189.cn') {
               if (!this.accessToken) {
-                await this.getNewToken()
+                await this.#getNewToken()
               }
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
@@ -176,14 +102,16 @@ export class CloudClient {
                 this.cookie = new CookieJar()
                 this.sessionKey = undefined
                 this.accessToken = undefined
-                await this.login()
-                if (response.url.includes('getAccessTokenBySsKey.action')) {
-                  console.log('InvalidSessionKey retry')
-                  response.statusCode = 401
-                  return response
-                } else {
-                  console.log('InvalidCookie retry')
-                  return retryWithMergedOptions({})
+                if (this.username && this.password) {
+                  await this.login()
+                  if (response.url.includes('getAccessTokenBySsKey.action')) {
+                    console.log('InvalidSessionKey retry')
+                    response.statusCode = 401
+                    return response
+                  } else {
+                    console.log('InvalidCookie retry')
+                    return retryWithMergedOptions({})
+                  }
                 }
               }
             }
@@ -211,8 +139,13 @@ export class CloudClient {
    * 获取加密参数
    * @returns
    */
-  getEncrypt(): Promise<any> {
-    return this.client.post('https://open.e.189.cn/api/logbox/config/encryptConf.do').json()
+  getEncrypt(): Promise<{
+    data: {
+      pubKey: string
+      pre: string
+    }
+  }> {
+    return this.request.post('https://open.e.189.cn/api/logbox/config/encryptConf.do').json()
   }
 
   /**
@@ -221,7 +154,7 @@ export class CloudClient {
    */
   redirectURL(): Promise<any> {
     return new Promise((resolve, reject) => {
-      this.client
+      this.request
         .get(
           'https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action'
         )
@@ -237,8 +170,13 @@ export class CloudClient {
    * 获取登录的参数
    * @returns
    */
-  appConf = (): Promise<any> =>
-    this.client
+  appConf(): Promise<{
+    data: {
+      returnUrl: string
+      paramId: string
+    }
+  }> {
+    return this.request
       .post('https://open.e.189.cn/api/logbox/oauth2/appConf.do', {
         headers: {
           Referer: 'https://open.e.189.cn/',
@@ -248,6 +186,7 @@ export class CloudClient {
         form: { version: '2.0', appKey: this.#cacheQuery.appId }
       })
       .json()
+  }
 
   #builLoginForm = (encrypt, appConf) => {
     const jsencrypt = new JSEncrypt()
@@ -314,7 +253,7 @@ export class CloudClient {
           const appConf = res[1].data
           const data = this.#builLoginForm(encrypt, appConf)
           //3.获取登录地址
-          return this.client
+          return this.request
             .post('https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do', {
               headers: {
                 Referer: 'https://open.e.189.cn/',
@@ -330,7 +269,7 @@ export class CloudClient {
           if (res.result !== 0) {
             reject(res.msg)
           } else {
-            return this.client.get(res.toUrl).then((r) => resolve(r.statusCode))
+            return this.request.get(res.toUrl).then((r) => resolve(r.statusCode))
           }
         })
         .catch((e) => reject(e))
@@ -338,29 +277,22 @@ export class CloudClient {
   }
 
   /**
-   * 获取新的 sessionKey
-   * @returns sessionKey
-   */
-  async getNewSessionKey() {
-    const { sessionKey } = await this.getUserBriefInfo()
-    this.sessionKey = sessionKey
-    return sessionKey
-  }
-
-  /**
    * 获取新的 accessToken
    * @returns accessToken
    */
-  async getNewToken() {
+  async #getNewToken() {
     if (!this.sessionKey) {
-      await this.getNewSessionKey()
+      const { sessionKey } = await this.getUserBriefInfo()
+      this.sessionKey = sessionKey
     }
     try {
       const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey)
       this.accessToken = accessToken
     } catch (e) {
+      //sessionKey 过期了，重新获取一次
       if (e instanceof HTTPError && e.response.statusCode === 401) {
-        await this.getNewSessionKey()
+        const { sessionKey } = await this.getUserBriefInfo()
+        this.sessionKey = sessionKey
         const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey)
         this.accessToken = accessToken
       } else {
@@ -375,7 +307,7 @@ export class CloudClient {
    * @returns
    */
   getUserSizeInfo(): Promise<UserSizeInfoResponse> {
-    return this.client
+    return this.request
       .get('https://cloud.189.cn/api/portal/getUserSizeInfo.action', {
         headers: { Accept: 'application/json;charset=UTF-8' }
       })
@@ -387,7 +319,7 @@ export class CloudClient {
    * @returns 签到结果
    */
   userSign(): Promise<UserSignResponse> {
-    return this.client
+    return this.request
       .get(
         `https://cloud.189.cn/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
           config.version
@@ -397,28 +329,31 @@ export class CloudClient {
   }
 
   /**
-   * @deprecated 任务无效， 1.0.4版本废弃
+   * 任务无效， 1.0.4版本废弃
+   * @deprecated 任务过期
    */
-  taskSign(): Promise<TaskResponse> {
-    return this.client(
+  taskSign(): Promise<UserTaskResponse> {
+    return this.request(
       'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN'
     ).json()
   }
 
   /**
-   * @deprecated 任务无效， 1.0.4版本废弃
+   * 任务无效， 1.0.4版本废弃
+   * @deprecated 任务过期
    */
-  taskPhoto(): Promise<TaskResponse> {
-    return this.client(
+  taskPhoto(): Promise<UserTaskResponse> {
+    return this.request(
       'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN'
     ).json()
   }
 
   /**
-   * @deprecated 任务无效， 1.0.3版本废弃
+   * 任务无效， 1.0.3版本废弃
+   * @deprecated 任务过期
    */
-  taskKJ(): Promise<TaskResponse> {
-    return this.client
+  taskKJ(): Promise<UserTaskResponse> {
+    return this.request
       .get(
         'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN'
       )
@@ -430,7 +365,7 @@ export class CloudClient {
    * @returns 用户session
    */
   getUserBriefInfo(): Promise<UserBriefInfoResponse> {
-    return this.client.get('https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action').json()
+    return this.request.get('https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action').json()
   }
 
   /**
@@ -445,7 +380,7 @@ export class CloudClient {
       Timestamp: time,
       AppKey: appkey
     })
-    return this.client
+    return this.request
       .get(
         `https://cloud.189.cn/api/open/oauth2/getAccessTokenBySsKey.action?sessionKey=${sessionKey}`,
         {
@@ -465,7 +400,7 @@ export class CloudClient {
    * @returns 家庭列表信息
    */
   getFamilyList(): Promise<FamilyListResponse> {
-    return this.client
+    return this.request
       .get('https://api.cloud.189.cn/open/family/manage/getFamilyList.action')
       .json()
   }
@@ -476,7 +411,7 @@ export class CloudClient {
    * @returns 签到结果
    */
   familyUserSign(familyId: number): Promise<FamilyUserSignResponse> {
-    return this.client
+    return this.request
       .get(
         `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`
       )
