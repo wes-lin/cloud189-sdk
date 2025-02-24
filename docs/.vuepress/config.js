@@ -8,7 +8,7 @@ export default defineUserConfig({
     navbar: [
       {
         text: '指南',
-        link: '/guide/'
+        children: ['/guide/introduction', '/guide/getting-started']
       },
       {
         text: 'API',
@@ -24,12 +24,14 @@ export default defineUserConfig({
         {
           text: '指南',
           collapsible: false,
-          children: ['introduction', 'getting-started']
+          children: ['/guide/introduction', '/guide/getting-started']
         }
       ]
-    }
+    },
+    contributors: false
   }),
   lang: 'zh-CN',
   title: '天翼云SDK',
-  description: '基于node.js的第三方天翼云盘SDK'
+  description: '基于node.js的第三方天翼云盘SDK',
+  head: [['link', { rel: 'icon', href: '/images/favicon.png' }]]
 })

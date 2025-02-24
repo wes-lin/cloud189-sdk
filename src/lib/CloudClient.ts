@@ -36,7 +36,7 @@ interface LoginResponse {
  * 天翼网盘客户端
  * @public
  */
-export class CloudClient {
+export default class CloudClient {
   accessToken = ''
   sessionKey = ''
   username: string
