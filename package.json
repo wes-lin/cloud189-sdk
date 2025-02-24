@@ -42,6 +42,7 @@
     "@types/chai": "^4.3.16",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.12.13",
+    "@types/tough-cookie": "^4.0.5",
     "@typescript-eslint/parser": "^6.17.0",
     "@vuepress/bundler-vite": "^2.0.0-rc.19",
     "@vuepress/theme-default": "^2.0.0-rc.78",

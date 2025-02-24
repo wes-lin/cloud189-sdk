@@ -1,7 +1,7 @@
 import url from 'url'
 import JSEncrypt from 'node-jsencrypt'
 import crypto from 'crypto'
-import got, { Got, HTTPError } from 'got'
+import got, { Got } from 'got'
 import { CookieJar } from 'tough-cookie'
 import {
   UserSignResponse,
@@ -68,21 +68,20 @@ export default class CloudClient {
       hooks: {
         beforeRequest: [
           async (options) => {
-            if (options.url.host === 'cloud.189.cn') {
-              if (!this.accessToken) {
-                await this.#getNewToken()
-              }
+            console.debug(`Request url: ${options.url}`)
+            if (options.url.host === 'api.cloud.189.cn') {
+              const accessToken = await this.getAccessToken();
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
               const signature = this.#getSignature({
                 ...(options.method === 'GET' ? query : options.json),
                 Timestamp: time,
-                AccessToken: this.accessToken
+                AccessToken: accessToken
               })
               options.headers['Sign-Type'] = '1'
               options.headers['Signature'] = signature
               options.headers['Timestamp'] = time
-              options.headers['Accesstoken'] = this.accessToken
+              options.headers['Accesstoken'] = accessToken
               options.headers['Accept'] = 'application/json;charset=UTF-8'
             }
           }
@@ -90,29 +89,25 @@ export default class CloudClient {
         afterResponse: [
           async (response, retryWithMergedOptions) => {
             if (response.statusCode === 400) {
-              const { errorCode } = JSON.parse(response.body.toString()) as {
-                errorCode: string
+              const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
+                errorCode: string,
+                errorMsg: string
               }
+              console.debug(`url: ${response.requestUrl}, errorCode: ${errorCode}, errorMsg : ${errorMsg}`)
               if (errorCode === 'InvalidAccessToken') {
-                console.log('InvalidAccessToken retry')
-                this.accessToken = undefined
-                this.sessionKey = undefined
+                console.debug('InvalidAccessToken retry...')
+                console.debug('Refresh AccessToken')
+                await this.getAccessToken(true)
                 return retryWithMergedOptions({})
-              } else if (errorCode === 'InvalidSessionKey') {
-                this.cookie = new CookieJar()
-                this.sessionKey = undefined
-                this.accessToken = undefined
-                if (this.username && this.password) {
-                  await this.login()
-                  if (response.url.includes('getAccessTokenBySsKey.action')) {
-                    console.log('InvalidSessionKey retry')
-                    response.statusCode = 401
-                    return response
-                  } else {
-                    console.log('InvalidCookie retry')
-                    return retryWithMergedOptions({})
-                  }
-                }
+              } else if(errorCode === 'InvalidSessionKey') {
+                console.debug('InvalidSessionKey retry...')
+                console.debug('Refresh InvalidSessionKey')
+                const sessionKey = await this.getSessionKey(true)
+                const urlObj = new URL(response.requestUrl)
+                urlObj.searchParams.set("sessionKey",sessionKey)
+                return retryWithMergedOptions({
+                  url: urlObj.toString()
+                })
               }
             }
             return response
@@ -170,7 +165,7 @@ export default class CloudClient {
    * 获取登录的参数
    * @returns
    */
-  appConf(): Promise<{
+  #appConf(): Promise<{
     data: {
       returnUrl: string
       paramId: string
@@ -245,7 +240,7 @@ export default class CloudClient {
         //2.获取登录参数
         this.redirectURL().then((query: CacheQuery) => {
           this.#cacheQuery = query
-          return this.appConf()
+          return this.#appConf()
         })
       ])
         .then((res: any[]) => {
@@ -277,34 +272,35 @@ export default class CloudClient {
   }
 
   /**
-   * 获取新的 accessToken
-   * @returns accessToken
+   * 获取 sessionKey
+   * @param needRefresh - 是否重新获取
+   * @returns sessionKey
    */
-  async #getNewToken() {
-    if (!this.sessionKey) {
-      const { sessionKey } = await this.getUserBriefInfo()
+  async getSessionKey(needRefresh = false): Promise<string> {
+    if(!this.sessionKey || needRefresh) {
+      const { sessionKey } = await this.#getUserBriefInfo()
       this.sessionKey = sessionKey
     }
-    try {
-      const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey)
+    return this.sessionKey
+  }
+
+  /**
+   * 获取 accessToken
+   * @param needRefresh - 是否重新获取
+   * @returns accessToken
+   */
+  async getAccessToken(needRefresh = false): Promise<string> {
+    if (!this.accessToken || needRefresh) {
+      const sessionKey = await this.getSessionKey()
+      const { accessToken } = await this.#getAccessTokenBySsKey(sessionKey)
       this.accessToken = accessToken
-    } catch (e) {
-      //sessionKey 过期了，重新获取一次
-      if (e instanceof HTTPError && e.response.statusCode === 401) {
-        const { sessionKey } = await this.getUserBriefInfo()
-        this.sessionKey = sessionKey
-        const { accessToken } = await this.getAccessTokenBySsKey(this.sessionKey)
-        this.accessToken = accessToken
-      } else {
-        throw e
-      }
     }
     return this.accessToken
   }
 
   /**
    * 获取用户网盘存储容量信息
-   * @returns
+   * @returns 账号容量结果
    */
   getUserSizeInfo(): Promise<UserSizeInfoResponse> {
     return this.request
@@ -364,7 +360,7 @@ export default class CloudClient {
    * 获取 sessionKey
    * @returns 用户session
    */
-  getUserBriefInfo(): Promise<UserBriefInfoResponse> {
+  #getUserBriefInfo(): Promise<UserBriefInfoResponse> {
     return this.request.get('https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action').json()
   }
 
@@ -372,7 +368,7 @@ export default class CloudClient {
    * 获取 accessToken
    * @param sessionKey - sessionKey
    */
-  getAccessTokenBySsKey(sessionKey: string): Promise<AccessTokenResponse> {
+  #getAccessTokenBySsKey(sessionKey: string): Promise<AccessTokenResponse> {
     const appkey = '600100422'
     const time = String(Date.now())
     const signature = this.#getSignature({
