@@ -126,7 +126,7 @@ export default class CloudClient {
   #valid = (options: Options) => {
     if (!options.cookie && (!options.username || !options.password)) {
       console.log('valid')
-      throw new Error('Please provide username and password or Cookie')
+      throw new Error('Please provide username and password or Cookie!')
     }
   }
 
@@ -233,7 +233,11 @@ export default class CloudClient {
      * 4.跳转到登录页
      */
     return new Promise((resolve, reject) => {
+      if(!this.username || !this.password) {
+        throw new Error('Please provide username and password!')
+      }
       console.log('login...')
+      this.cookie.removeAllCookiesSync()
       Promise.all([
         //1.获取公钥
         this.getEncrypt(),
@@ -272,12 +276,27 @@ export default class CloudClient {
   }
 
   /**
+   * 是否存在登录信息
+   * @returns 
+   */
+  isLoggedSession():boolean {
+    const loginUserCookie = this.cookie.getCookiesSync("https://cloud.189.cn")?.find(cookie => cookie.key === 'COOKIE_LOGIN_USER' && cookie.value)
+    if(loginUserCookie) {
+      return true
+    }
+    return false
+  }
+
+  /**
    * 获取 sessionKey
    * @param needRefresh - 是否重新获取
    * @returns sessionKey
    */
   async getSessionKey(needRefresh = false): Promise<string> {
     if(!this.sessionKey || needRefresh) {
+      if(!this.isLoggedSession()) {
+        await this.login()
+      }
       const { sessionKey } = await this.#getUserBriefInfo()
       this.sessionKey = sessionKey
     }
