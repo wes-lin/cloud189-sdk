@@ -5,6 +5,8 @@ import { defaultTheme } from '@vuepress/theme-default'
 export default defineUserConfig({
   bundler: viteBundler(),
   theme: defaultTheme({
+    logo: '/images/favicon.png',
+    repo: 'https://github.com/wes-lin/cloud189-sdk.git',
     navbar: [
       {
         text: '指南',
@@ -13,10 +15,6 @@ export default defineUserConfig({
       {
         text: 'API',
         link: '/api/'
-      },
-      {
-        text: 'Github',
-        link: 'https://github.com/wes-lin/cloud189-sdk.git'
       }
     ],
     sidebar: {
@@ -31,7 +29,7 @@ export default defineUserConfig({
     contributors: false
   }),
   lang: 'zh-CN',
-  title: '天翼云SDK',
+  title: 'cloud189-sdk',
   description: '基于node.js的第三方天翼云盘SDK',
   head: [['link', { rel: 'icon', href: '/images/favicon.png' }]]
 })

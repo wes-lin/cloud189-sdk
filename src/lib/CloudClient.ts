@@ -37,8 +37,8 @@ interface LoginResponse {
  * @public
  */
 export default class CloudClient {
-  accessToken = ''
-  sessionKey = ''
+  #accessToken = ''
+  #sessionKey = ''
   username: string
   password: string
   #cacheQuery: CacheQuery
@@ -49,8 +49,8 @@ export default class CloudClient {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
-    this.accessToken = _options.accessToken
-    this.sessionKey = _options.sessionKey
+    this.#accessToken = _options.accessToken
+    this.#sessionKey = _options.sessionKey
     if (_options.cookie) {
       this.cookie = _options.cookie
     } else {
@@ -70,7 +70,7 @@ export default class CloudClient {
           async (options) => {
             console.debug(`Request url: ${options.url}`)
             if (options.url.host === 'api.cloud.189.cn') {
-              const accessToken = await this.getAccessToken();
+              const accessToken = await this.getAccessToken()
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
               const signature = this.#getSignature({
@@ -90,21 +90,23 @@ export default class CloudClient {
           async (response, retryWithMergedOptions) => {
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
-                errorCode: string,
+                errorCode: string
                 errorMsg: string
               }
-              console.debug(`url: ${response.requestUrl}, errorCode: ${errorCode}, errorMsg : ${errorMsg}`)
+              console.debug(
+                `url: ${response.requestUrl}, errorCode: ${errorCode}, errorMsg : ${errorMsg}`
+              )
               if (errorCode === 'InvalidAccessToken') {
                 console.debug('InvalidAccessToken retry...')
                 console.debug('Refresh AccessToken')
                 await this.getAccessToken(true)
                 return retryWithMergedOptions({})
-              } else if(errorCode === 'InvalidSessionKey') {
+              } else if (errorCode === 'InvalidSessionKey') {
                 console.debug('InvalidSessionKey retry...')
                 console.debug('Refresh InvalidSessionKey')
                 const sessionKey = await this.getSessionKey(true)
                 const urlObj = new URL(response.requestUrl)
-                urlObj.searchParams.set("sessionKey",sessionKey)
+                urlObj.searchParams.set('sessionKey', sessionKey)
                 return retryWithMergedOptions({
                   url: urlObj.toString()
                 })
@@ -233,7 +235,7 @@ export default class CloudClient {
      * 4.跳转到登录页
      */
     return new Promise((resolve, reject) => {
-      if(!this.username || !this.password) {
+      if (!this.username || !this.password) {
         throw new Error('Please provide username and password!')
       }
       console.log('login...')
@@ -277,11 +279,13 @@ export default class CloudClient {
 
   /**
    * 是否存在登录信息
-   * @returns 
+   * @returns
    */
-  isLoggedSession():boolean {
-    const loginUserCookie = this.cookie.getCookiesSync("https://cloud.189.cn")?.find(cookie => cookie.key === 'COOKIE_LOGIN_USER' && cookie.value)
-    if(loginUserCookie) {
+  isLoggedSession(): boolean {
+    const loginUserCookie = this.cookie
+      .getCookiesSync('https://cloud.189.cn')
+      ?.find((cookie) => cookie.key === 'COOKIE_LOGIN_USER' && cookie.value)
+    if (loginUserCookie) {
       return true
     }
     return false
@@ -293,14 +297,14 @@ export default class CloudClient {
    * @returns sessionKey
    */
   async getSessionKey(needRefresh = false): Promise<string> {
-    if(!this.sessionKey || needRefresh) {
-      if(!this.isLoggedSession()) {
+    if (!this.#sessionKey || needRefresh) {
+      if (!this.isLoggedSession()) {
         await this.login()
       }
       const { sessionKey } = await this.#getUserBriefInfo()
-      this.sessionKey = sessionKey
+      this.#sessionKey = sessionKey
     }
-    return this.sessionKey
+    return this.#sessionKey
   }
 
   /**
@@ -309,12 +313,12 @@ export default class CloudClient {
    * @returns accessToken
    */
   async getAccessToken(needRefresh = false): Promise<string> {
-    if (!this.accessToken || needRefresh) {
+    if (!this.#accessToken || needRefresh) {
       const sessionKey = await this.getSessionKey()
       const { accessToken } = await this.#getAccessTokenBySsKey(sessionKey)
-      this.accessToken = accessToken
+      this.#accessToken = accessToken
     }
-    return this.accessToken
+    return this.#accessToken
   }
 
   /**
@@ -330,7 +334,7 @@ export default class CloudClient {
   }
 
   /**
-   * 个人用户签到任务
+   * 个人签到任务
    * @returns 签到结果
    */
   userSign(): Promise<UserSignResponse> {

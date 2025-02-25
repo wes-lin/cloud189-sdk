@@ -28,6 +28,7 @@ export interface FamilyListResponse {
 }
 
 /**
+ * sessionKey结果
  * @public
  */
 export interface UserBriefInfoResponse {
