@@ -16,7 +16,7 @@
     "api-documenter": "api-documenter markdown -i temp -o docs/api",
     "doc:preare": "npm run api-extractor && npm run api-documenter",
     "doc:dev": "npm run doc:preare && vuepress dev docs",
-    "doc:build": "npm run doc:preare && vuepress build docs",
+    "doc:build": "npm run build && npm run doc:preare && vuepress build docs",
     "test": "mocha",
     "coverage": "nyc npm run test"
   },
