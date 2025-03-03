@@ -145,7 +145,7 @@ export interface UserTaskResponse {
  * 客户端初始化参数
  * @public
  */
-export interface Options {
+export interface ConfigurationOptions {
   /** 登录名 */
   username?: string
   /** 密码 */

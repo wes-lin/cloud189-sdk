@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "start": "node ./test/app.js",
+    "debug": "DEBUG=* node ./test/app.js",
     "build": "tsc",
     "api-extractor": "api-extractor run",
     "api-documenter": "api-documenter markdown -i temp -o docs/api",
@@ -30,6 +31,8 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "chalk": "^4.1.2",
+    "debug": "^4.4.0",
     "got": "11.8.2",
     "node-jsencrypt": "^1.0.0",
     "tough-cookie": "^4.1.4"
