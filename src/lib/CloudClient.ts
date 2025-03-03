@@ -1,6 +1,5 @@
 import url from 'url'
 import JSEncrypt from 'node-jsencrypt'
-import crypto from 'crypto'
 import got, { Got } from 'got'
 import { CookieJar } from 'tough-cookie'
 import {
@@ -11,8 +10,10 @@ import {
   AccessTokenResponse,
   FamilyListResponse,
   FamilyUserSignResponse,
-  Options
+  ConfigurationOptions
 } from './types'
+import { log } from './log'
+import { getSignature } from './util'
 
 const config = {
   clientId: '538135150693412',
@@ -45,7 +46,8 @@ export default class CloudClient {
   cookie: CookieJar
   readonly request: Got
 
-  constructor(_options: Options) {
+  constructor(_options: ConfigurationOptions) {
+
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
@@ -68,12 +70,12 @@ export default class CloudClient {
       hooks: {
         beforeRequest: [
           async (options) => {
-            console.debug(`Request url: ${options.url}`)
+            log.debug(`Request url: ${options.url}`)
             if (options.url.host === 'api.cloud.189.cn') {
               const accessToken = await this.getAccessToken()
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
-              const signature = this.#getSignature({
+              const signature = getSignature({
                 ...(options.method === 'GET' ? query : options.json),
                 Timestamp: time,
                 AccessToken: accessToken
@@ -93,20 +95,22 @@ export default class CloudClient {
                 errorCode: string
                 errorMsg: string
               }
-              console.debug(
+              log.debug(
                 `url: ${response.requestUrl}, errorCode: ${errorCode}, errorMsg : ${errorMsg}`
               )
               if (errorCode === 'InvalidAccessToken') {
-                console.debug('InvalidAccessToken retry...')
-                console.debug('Refresh AccessToken')
+                log.warn('InvalidAccessToken retry...')
+                log.warn('Refresh AccessToken')
                 await this.getAccessToken(true)
                 return retryWithMergedOptions({})
               } else if (errorCode === 'InvalidSessionKey') {
-                console.debug('InvalidSessionKey retry...')
-                console.debug('Refresh InvalidSessionKey')
+                log.warn('InvalidSessionKey retry...')
+                log.warn('Refresh InvalidSessionKey')
                 const sessionKey = await this.getSessionKey(true)
                 const urlObj = new URL(response.requestUrl)
-                urlObj.searchParams.set('sessionKey', sessionKey)
+                if(urlObj.searchParams.has('sessionKey')) {
+                  urlObj.searchParams.set('sessionKey', sessionKey)
+                }
                 return retryWithMergedOptions({
                   url: urlObj.toString()
                 })
@@ -115,19 +119,13 @@ export default class CloudClient {
             return response
           }
         ],
-        beforeRetry: [
-          (options, error, retryCount) => {
-            // This will be called on `retryWithMergedOptions(...)`
-            console.log('retry.....')
-          }
-        ]
       }
     })
   }
 
-  #valid = (options: Options) => {
+  #valid = (options: ConfigurationOptions) => {
     if (!options.cookie && (!options.username || !options.password)) {
-      console.log('valid')
+      log.error('valid')
       throw new Error('Please provide username and password or Cookie!')
     }
   }
@@ -210,20 +208,6 @@ export default class CloudClient {
     return data
   }
 
-  #sortParameter = (data): string => {
-    if (!data) {
-      return ''
-    }
-    const e = Object.entries(data).map((t) => t.join('='))
-    e.sort((a, b) => (a > b ? 1 : a < b ? -1 : 0))
-    return e.join('&')
-  }
-
-  #getSignature = (data) => {
-    const parameter = this.#sortParameter(data)
-    return crypto.createHash('md5').update(parameter).digest('hex')
-  }
-
   /**
    * 用户名密码登录
    * */
@@ -238,7 +222,7 @@ export default class CloudClient {
       if (!this.username || !this.password) {
         throw new Error('Please provide username and password!')
       }
-      console.log('login...')
+      log.debug('login...')
       this.cookie.removeAllCookiesSync()
       Promise.all([
         //1.获取公钥
@@ -394,7 +378,7 @@ export default class CloudClient {
   #getAccessTokenBySsKey(sessionKey: string): Promise<AccessTokenResponse> {
     const appkey = '600100422'
     const time = String(Date.now())
-    const signature = this.#getSignature({
+    const signature = getSignature({
       sessionKey,
       Timestamp: time,
       AppKey: appkey
