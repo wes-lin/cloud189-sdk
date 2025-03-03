@@ -28,24 +28,31 @@ pnpm add cloud189-sdk
 
 ```javascript
 const { CloudClient } = require('cloud189-sdk')
-// 使用密码初始化
+// 使用账号密码初始化
 const client = new CloudClient({
   username: 'username',
   password: 'password'
 })
-/**
- * 使用cookie初始化，建议传入username password参数
- * 便于自动登陆获取sessionKey和accessToken
- * /
+
+// 使用cookie初始化，建议同时传入账号密码, 便于自动登陆
 const cookies = [
-  'JSESSIONID=*******; Path=/; HttpOnly; hostOnly=true; aAge=2ms; cAge=20ms',
-  'COOKIE_LOGIN_USER=*******; Domain=cloud.189.cn; Path=/; HttpOnly; hostOnly=false; aAge=2ms; cAge=19ms'
+  'JSESSIONID=*******',
+  'COOKIE_LOGIN_USER=*******'
 ]
 const cookieJar = new CookieJar()
 cookies.forEach((cookie) => cookieJar.setCookieSync(cookie, 'https://cloud.189.cn'))
 const client = new CloudClient({
   cookie: cookieJar
 })
+
+// 或者文件存储cookie
+const cookieJar = new CookieJar(new FileCookieStore('./cookie.json'))
+const client = new CloudClient({
+  username: "username",
+  password: 'password',
+  cookie: cookieJar
+})
+
 ```
 
 ## 使用
