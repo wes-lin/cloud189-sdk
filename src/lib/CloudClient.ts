@@ -47,12 +47,9 @@ export default class CloudClient {
   readonly request: Got
 
   constructor(_options: ConfigurationOptions) {
-
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
-    this.#accessToken = _options.accessToken
-    this.#sessionKey = _options.sessionKey
     if (_options.cookie) {
       this.cookie = _options.cookie
     } else {
@@ -108,7 +105,7 @@ export default class CloudClient {
                 log.warn('Refresh InvalidSessionKey')
                 const sessionKey = await this.getSessionKey(true)
                 const urlObj = new URL(response.requestUrl)
-                if(urlObj.searchParams.has('sessionKey')) {
+                if (urlObj.searchParams.has('sessionKey')) {
                   urlObj.searchParams.set('sessionKey', sessionKey)
                 }
                 return retryWithMergedOptions({
@@ -118,7 +115,7 @@ export default class CloudClient {
             }
             return response
           }
-        ],
+        ]
       }
     })
   }
@@ -198,12 +195,12 @@ export default class CloudClient {
       captchaToken: '',
       dynamicCheck: 'FALSE',
       clientType: '1',
-      cb_SaveName: '0',
+      cb_SaveName: '3',
       isOauth2: false,
       returnUrl: appConf.returnUrl,
       paramId: appConf.paramId,
       userName: `${encrypt.pre}${usernameEncrypt}`,
-      password: `${encrypt.pre}${passwordEncrypt}`
+      epd: `${encrypt.pre}${passwordEncrypt}`
     }
     return data
   }

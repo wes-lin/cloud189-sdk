@@ -1,6 +1,6 @@
 {
   "name": "cloud189-sdk",
-  "version": "1.0.5",
+  "version": "1.0.6-alpha.1",
   "description": "基于node.js的第三方天翼云盘SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -35,7 +35,8 @@
     "debug": "^4.4.0",
     "got": "11.8.2",
     "node-jsencrypt": "^1.0.0",
-    "tough-cookie": "^4.1.4"
+    "tough-cookie": "^4.1.4",
+    "tough-cookie-file-store": "^2.0.3"
   },
   "engines": {
     "node": ">=16"
@@ -47,6 +48,7 @@
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.12.13",
     "@types/tough-cookie": "^4.0.5",
+    "@types/tough-cookie-file-store": "^2.0.4",
     "@typescript-eslint/parser": "^6.17.0",
     "@vuepress/bundler-vite": "^2.0.0-rc.19",
     "@vuepress/theme-default": "^2.0.0-rc.78",

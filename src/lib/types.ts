@@ -152,8 +152,4 @@ export interface ConfigurationOptions {
   password?: string
   /** 登录的cookie,如不传用户名和密码时需要传入 */
   cookie?: CookieJar
-  /** 默认可以自己获取也可以传入,一些API需要 */
-  accessToken?: string
-  /** 默认可以自己获取也可以传入,用于获取accessToken */
-  sessionKey?: string
 }
