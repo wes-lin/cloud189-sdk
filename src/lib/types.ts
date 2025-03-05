@@ -1,5 +1,3 @@
-import { CookieJar } from 'tough-cookie'
-
 /**
  * 账户家庭信息
  * @public
@@ -25,14 +23,6 @@ export interface FamilyListResponse {
       userRole: number
     }
   ]
-}
-
-/**
- * sessionKey结果
- * @public
- */
-export interface UserBriefInfoResponse {
-  sessionKey: string
 }
 
 /**
@@ -150,7 +140,31 @@ export interface ConfigurationOptions {
   username?: string
   /** 密码 */
   password?: string
-  /** 登录的cookie,如不传用户名和密码时需要传入 */
-  cookie?: CookieJar
   accessToken?: string
+  refreshToken?: string
+}
+
+/**
+ * accessToken 有效期7天，可以通过refreshToken取新的accessToken
+ */
+export interface TokenSession {
+  res_code: number
+  res_message: string
+  accessToken: string
+  familySessionKey: string
+  familySessionSecret: string
+  loginName: string
+  refreshToken: string
+  sessionKey: string
+}
+
+export interface RefreshTokenSession {
+  expiresIn: number
+  accessToken: string
+  refreshToken: string
+}
+
+export interface ClientSession {
+  accessToken: string
+  sessionKey: string
 }

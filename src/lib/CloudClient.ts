@@ -1,15 +1,15 @@
 import url from 'url'
 import got, { Got } from 'got'
-import { CookieJar } from 'tough-cookie'
 import {
   UserSignResponse,
   UserSizeInfoResponse,
-  UserBriefInfoResponse,
-  UserTaskResponse,
   AccessTokenResponse,
   FamilyListResponse,
   FamilyUserSignResponse,
-  ConfigurationOptions
+  ConfigurationOptions,
+  ClientSession,
+  RefreshTokenSession,
+  TokenSession
 } from './types'
 import { log } from './log'
 import { getSignature, rsaEncrypt } from './util'
@@ -42,18 +42,6 @@ interface LoginResponse {
   result: number
   msg: string
   toUrl: string
-}
-
-interface TokenSession {
-  res_code: number
-  res_message: string
-  accessToken: string
-  familySessionKey: string
-  familySessionSecret: string
-  loginName: string
-  refreshToken: string
-  sessionKey: string
-  sessionSecret: string
 }
 
 export class CloudAuthClient {
@@ -132,18 +120,15 @@ export class CloudAuthClient {
     return data
   }
 
-  async getSessionForPC(param: { redirectURL?: string }) {
+  async getSessionForPC(param: { redirectURL?: string; accessToken?: string }) {
     const params = {
       appId: AppID,
-      redirectURL: param.redirectURL,
-      ...clientSuffix()
+      ...clientSuffix(),
+      ...param
     }
     const res = await this.request
       .post(`${API_URL}/getSessionForPC.action`, {
-        searchParams: params,
-        headers: {
-          Accept: 'application/json;charset=UTF-8'
-        }
+        searchParams: params
       })
       .json<TokenSession>()
     return res
@@ -152,7 +137,7 @@ export class CloudAuthClient {
   /**
    * 用户名密码登录
    * */
-  async login(username: string, password: string): Promise<TokenSession> {
+  async loginByPassword(username: string, password: string) {
     if (!username || !password) {
       throw new Error('Please provide username and password!')
     }
@@ -186,6 +171,29 @@ export class CloudAuthClient {
       throw e
     }
   }
+
+  /**
+   * token登录
+   */
+  async loginByAccessToken(accessToken: string) {
+    return await this.getSessionForPC({ accessToken })
+  }
+
+  /**
+   * 刷新token
+   */
+  refreshToken(refreshToken: string): Promise<RefreshTokenSession> {
+    return this.request
+      .post(`${AUTH_URL}/api/oauth2/refreshToken.do`, {
+        form: {
+          clientId: AppID,
+          refreshToken,
+          grantType: 'refresh_token',
+          format: 'json'
+        }
+      })
+      .json()
+  }
 }
 
 /**
@@ -193,25 +201,26 @@ export class CloudAuthClient {
  * @public
  */
 export class CloudClient {
-  #accessToken = ''
-  #sessionKey = ''
   username: string
   password: string
-  cookie: CookieJar
+  accessToken: string
+  refreshToken: string
   readonly request: Got
+  readonly authClient: CloudAuthClient
+  readonly session: ClientSession
 
   constructor(_options: ConfigurationOptions) {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
-    this.#accessToken = _options.accessToken
-    if (_options.cookie) {
-      this.cookie = _options.cookie
-    } else {
-      this.cookie = new CookieJar()
+    this.accessToken = _options.accessToken
+    this.refreshToken = _options.refreshToken
+    this.authClient = new CloudAuthClient()
+    this.session = {
+      accessToken: '',
+      sessionKey: ''
     }
     this.request = got.extend({
-      cookieJar: this.cookie,
       retry: {
         limit: 5
       },
@@ -223,8 +232,7 @@ export class CloudClient {
         beforeRequest: [
           async (options) => {
             if (options.url.href.includes(API_URL)) {
-              const accessToken = this.#accessToken
-              console.log(accessToken)
+              const accessToken = await this.getAccessToken()
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
               const signature = getSignature({
@@ -239,16 +247,28 @@ export class CloudClient {
               options.headers['Accept'] = 'application/json;charset=UTF-8'
             } else if (options.url.href.includes(WEB_URL)) {
               const urlObj = new URL(options.url)
-              urlObj.searchParams.set('sessionKey', this.#sessionKey)
+              if (options.url.href.includes('/open')) {
+                const time = String(Date.now())
+                const appkey = '600100422'
+                const signature = getSignature({
+                  ...(options.method === 'GET' ? urlObj.searchParams : options.json),
+                  Timestamp: time,
+                  AppKey: appkey
+                })
+                options.headers['Sign-Type'] = '1'
+                options.headers['Signature'] = signature
+                options.headers['Timestamp'] = time
+                options.headers['AppKey'] = appkey
+              }
+              const sessionKey = await this.getSessionKey()
+              urlObj.searchParams.set('sessionKey', sessionKey)
               options.url = urlObj
             }
           }
         ],
         afterResponse: [
           async (response, retryWithMergedOptions) => {
-            log.debug(
-              `url: ${response.requestUrl}, response: ${response.body}, cookie:${JSON.stringify(this.cookie.serializeSync())}`
-            )
+            log.debug(`url: ${response.requestUrl}, response: ${response.body}`)
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
@@ -257,19 +277,13 @@ export class CloudClient {
               if (errorCode === 'InvalidAccessToken') {
                 log.debug('InvalidAccessToken retry...')
                 log.debug('Refresh AccessToken')
-                await this.getAccessToken(true)
+                this.session.accessToken = ''
                 return retryWithMergedOptions({})
               } else if (errorCode === 'InvalidSessionKey') {
                 log.debug('InvalidSessionKey retry...')
                 log.debug('Refresh InvalidSessionKey')
-                const sessionKey = await this.getSessionKey(true)
-                const urlObj = new URL(response.requestUrl)
-                if (urlObj.searchParams.has('sessionKey')) {
-                  urlObj.searchParams.set('sessionKey', sessionKey)
-                }
-                return retryWithMergedOptions({
-                  url: urlObj.toString()
-                })
+                this.session.sessionKey = ''
+                return retryWithMergedOptions({})
               }
             }
             return response
@@ -280,37 +294,36 @@ export class CloudClient {
   }
 
   #valid = (options: ConfigurationOptions) => {
-    if (!options.cookie && (!options.username || !options.password)) {
+    if (!options.accessToken && !options.refreshToken && (!options.username || !options.password)) {
       log.error('valid')
-      throw new Error('Please provide username and password or Cookie!')
+      throw new Error('Please provide username and password or accessToken or refreshToken!')
     }
   }
 
-  /**
-   * 获取 sessionKey
-   * @param needRefresh - 是否重新获取
-   * @returns sessionKey
-   */
-  async getSessionKey(needRefresh = false): Promise<string> {
-    if (!this.#sessionKey || needRefresh) {
-      const { sessionKey } = await this.#getUserBriefInfo()
-      this.#sessionKey = sessionKey
+  getSession() {
+    if (this.accessToken) {
+      return this.authClient.loginByAccessToken(this.accessToken)
+    } else {
+      return this.authClient.loginByPassword(this.username, this.password)
     }
-    return this.#sessionKey
+  }
+
+  async getSessionKey() {
+    if (!this.session.sessionKey) {
+      this.session.sessionKey = (await this.getSession()).sessionKey
+    }
+    return this.session.sessionKey
   }
 
   /**
    * 获取 accessToken
-   * @param needRefresh - 是否重新获取
    * @returns accessToken
    */
-  async getAccessToken(needRefresh = false): Promise<string> {
-    if (!this.#accessToken || needRefresh) {
-      const sessionKey = await this.getSessionKey()
-      const { accessToken } = await this.#getAccessTokenBySsKey(sessionKey)
-      this.#accessToken = accessToken
+  async getAccessToken() {
+    if (!this.session.accessToken) {
+      this.session.accessToken = (await this.#getAccessTokenBySsKey()).accessToken
     }
-    return this.#accessToken
+    return this.session.accessToken
   }
 
   /**
@@ -340,35 +353,10 @@ export class CloudClient {
   }
 
   /**
-   * 获取 sessionKey
-   * @returns 用户session
-   */
-  #getUserBriefInfo(): Promise<UserBriefInfoResponse> {
-    return this.request.get(`${WEB_URL}/api/portal/v2/getUserBriefInfo.action`).json()
-  }
-
-  /**
    * 获取 accessToken
-   * @param sessionKey - sessionKey
    */
-  #getAccessTokenBySsKey(sessionKey: string): Promise<AccessTokenResponse> {
-    const appkey = '600100422'
-    const time = String(Date.now())
-    const signature = getSignature({
-      sessionKey,
-      Timestamp: time,
-      AppKey: appkey
-    })
-    return this.request
-      .get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action?sessionKey=${sessionKey}`, {
-        headers: {
-          'Sign-Type': '1',
-          Signature: signature,
-          Timestamp: time,
-          Appkey: appkey
-        }
-      })
-      .json()
+  #getAccessTokenBySsKey(): Promise<AccessTokenResponse> {
+    return this.request.get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`).json()
   }
 
   /**

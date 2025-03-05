@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "start": "node ./test/app.js",
-    "debug": "CLOUD189_VERBOSE=1 npm run start",
+    "debug": "set CLOUD189_VERBOSE='1' && npm run start",
     "build": "tsc",
     "test": "mocha",
     "coverage": "nyc npm run test"
@@ -27,9 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
-    "got": "11.8.2",
-    "tough-cookie": "^4.1.4",
-    "tough-cookie-file-store": "^2.0.3"
+    "got": "11.8.2"
   },
   "engines": {
     "node": ">=16"
@@ -38,8 +36,6 @@
     "@types/chai": "^4.3.16",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.12.13",
-    "@types/tough-cookie": "^4.0.5",
-    "@types/tough-cookie-file-store": "^2.0.4",
     "@typescript-eslint/parser": "^6.17.0",
     "chai": "4.4.1",
     "mocha": "^10.4.0",
