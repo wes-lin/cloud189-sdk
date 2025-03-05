@@ -1,11 +1,11 @@
 import chalk from 'chalk'
 import { Chalk } from 'chalk'
-import _debug from 'debug'
+
 import WritableStream = NodeJS.WritableStream
 
 let printer: ((message: string) => void) | null = null
 
-export const debug = _debug('cloud189-sdk')
+export const debug = process.env.CLOUD189_VERBOSE === '1'
 
 export interface Fields {
   [index: string]: any
@@ -21,7 +21,7 @@ export class Logger {
   messageTransformer: (message: string, level: LogLevel) => string = (it) => it
 
   get isDebugEnabled() {
-    return debug.enabled
+    return debug
   }
 
   info(messageOrFields: Fields | null | string, message?: string) {
@@ -37,7 +37,7 @@ export class Logger {
   }
 
   debug(messageOrFields: Fields | null | string, message?: string) {
-    if (debug.enabled) {
+    if (this.isDebugEnabled) {
       this.doLog(message, messageOrFields, 'debug')
     }
   }
