@@ -14,6 +14,7 @@ import {
 } from './types'
 import { log } from './log'
 import { getSignature } from './util'
+import { WEB_URL, API_URL, AUTH_URL, UserAgent, clientSuffix } from './const'
 
 const config = {
   clientId: '538135150693412',
@@ -61,14 +62,16 @@ export default class CloudClient {
         limit: 5
       },
       headers: {
-        'User-Agent': `Mozilla/5.0 (Linux; U; Android 11; ${config.model} Build/RP1A.201005.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.136 Mobile Safari/537.36 Ecloud/${config.version} Android/30 clientId/${config.clientId} clientModel/${config.model} clientChannelId/qq proVersion/1.0.6`,
-        Referer: 'https://cloud.189.cn/web/main/'
+        'User-Agent': UserAgent,
+        Referer: `${WEB_URL}/web/main/`
       },
       hooks: {
         beforeRequest: [
           async (options) => {
-            log.debug(`Request url: ${options.url}`)
-            if (options.url.host === 'api.cloud.189.cn') {
+            if (
+              options.url.href.includes(API_URL) &&
+              !options.url.href.includes('getSessionForPC.action')
+            ) {
               const accessToken = await this.getAccessToken()
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
@@ -87,22 +90,20 @@ export default class CloudClient {
         ],
         afterResponse: [
           async (response, retryWithMergedOptions) => {
+            log.debug(`url: ${response.requestUrl}, response: ${response.body}`)
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
                 errorMsg: string
               }
-              log.debug(
-                `url: ${response.requestUrl}, errorCode: ${errorCode}, errorMsg : ${errorMsg}`
-              )
               if (errorCode === 'InvalidAccessToken') {
-                log.warn('InvalidAccessToken retry...')
-                log.warn('Refresh AccessToken')
+                log.debug('InvalidAccessToken retry...')
+                log.debug('Refresh AccessToken')
                 await this.getAccessToken(true)
                 return retryWithMergedOptions({})
               } else if (errorCode === 'InvalidSessionKey') {
-                log.warn('InvalidSessionKey retry...')
-                log.warn('Refresh InvalidSessionKey')
+                log.debug('InvalidSessionKey retry...')
+                log.debug('Refresh InvalidSessionKey')
                 const sessionKey = await this.getSessionKey(true)
                 const urlObj = new URL(response.requestUrl)
                 if (urlObj.searchParams.has('sessionKey')) {
@@ -137,7 +138,7 @@ export default class CloudClient {
       pre: string
     }
   }> {
-    return this.request.post('https://open.e.189.cn/api/logbox/config/encryptConf.do').json()
+    return this.request.post(`${AUTH_URL}/api/logbox/config/encryptConf.do`).json()
   }
 
   /**
@@ -148,7 +149,7 @@ export default class CloudClient {
     return new Promise((resolve, reject) => {
       this.request
         .get(
-          'https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action'
+          `${WEB_URL}/api/portal/loginUrl.action?redirectURL=${WEB_URL}/web/redirect.html?returnURL=/main.action`
         )
         .then((res) => {
           const { query } = url.parse(res.url, true)
@@ -169,9 +170,9 @@ export default class CloudClient {
     }
   }> {
     return this.request
-      .post('https://open.e.189.cn/api/logbox/oauth2/appConf.do', {
+      .post(`${AUTH_URL}/api/logbox/oauth2/appConf.do`, {
         headers: {
-          Referer: 'https://open.e.189.cn/',
+          Referer: AUTH_URL,
           lt: this.#cacheQuery.lt,
           REQID: this.#cacheQuery.reqId
         },
@@ -200,7 +201,7 @@ export default class CloudClient {
       returnUrl: appConf.returnUrl,
       paramId: appConf.paramId,
       userName: `${encrypt.pre}${usernameEncrypt}`,
-      epd: `${encrypt.pre}${passwordEncrypt}`
+      password: `${encrypt.pre}${passwordEncrypt}`
     }
     return data
   }
@@ -236,9 +237,9 @@ export default class CloudClient {
           const data = this.#builLoginForm(encrypt, appConf)
           //3.获取登录地址
           return this.request
-            .post('https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do', {
+            .post(`${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`, {
               headers: {
-                Referer: 'https://open.e.189.cn/',
+                Referer: AUTH_URL,
                 lt: this.#cacheQuery.lt,
                 REQID: this.#cacheQuery.reqId
               },
@@ -264,7 +265,7 @@ export default class CloudClient {
    */
   isLoggedSession(): boolean {
     const loginUserCookie = this.cookie
-      .getCookiesSync('https://cloud.189.cn')
+      .getCookiesSync(WEB_URL)
       ?.find((cookie) => cookie.key === 'COOKIE_LOGIN_USER' && cookie.value)
     if (loginUserCookie) {
       return true
@@ -308,7 +309,7 @@ export default class CloudClient {
    */
   getUserSizeInfo(): Promise<UserSizeInfoResponse> {
     return this.request
-      .get('https://cloud.189.cn/api/portal/getUserSizeInfo.action', {
+      .get(`${WEB_URL}/api/portal/getUserSizeInfo.action`, {
         headers: { Accept: 'application/json;charset=UTF-8' }
       })
       .json()
@@ -321,7 +322,7 @@ export default class CloudClient {
   userSign(): Promise<UserSignResponse> {
     return this.request
       .get(
-        `https://cloud.189.cn/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
+        `${WEB_URL}/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
           config.version
         }&model=${config.model}`
       )
@@ -365,7 +366,7 @@ export default class CloudClient {
    * @returns 用户session
    */
   #getUserBriefInfo(): Promise<UserBriefInfoResponse> {
-    return this.request.get('https://cloud.189.cn/api/portal/v2/getUserBriefInfo.action').json()
+    return this.request.get(`${WEB_URL}/api/portal/v2/getUserBriefInfo.action`).json()
   }
 
   /**
@@ -381,17 +382,14 @@ export default class CloudClient {
       AppKey: appkey
     })
     return this.request
-      .get(
-        `https://cloud.189.cn/api/open/oauth2/getAccessTokenBySsKey.action?sessionKey=${sessionKey}`,
-        {
-          headers: {
-            'Sign-Type': '1',
-            Signature: signature,
-            Timestamp: time,
-            Appkey: appkey
-          }
+      .get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action?sessionKey=${sessionKey}`, {
+        headers: {
+          'Sign-Type': '1',
+          Signature: signature,
+          Timestamp: time,
+          Appkey: appkey
         }
-      )
+      })
       .json()
   }
 
@@ -400,9 +398,7 @@ export default class CloudClient {
    * @returns 家庭列表信息
    */
   getFamilyList(): Promise<FamilyListResponse> {
-    return this.request
-      .get('https://api.cloud.189.cn/open/family/manage/getFamilyList.action')
-      .json()
+    return this.request.get(`${API_URL}/open/family/manage/getFamilyList.action`).json()
   }
 
   /**
@@ -412,9 +408,7 @@ export default class CloudClient {
    */
   familyUserSign(familyId: number): Promise<FamilyUserSignResponse> {
     return this.request
-      .get(
-        `https://api.cloud.189.cn/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`
-      )
+      .get(`${API_URL}/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`)
       .json()
   }
 }
