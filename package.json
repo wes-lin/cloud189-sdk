@@ -28,7 +28,6 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "got": "11.8.2",
-    "node-jsencrypt": "^1.0.0",
     "tough-cookie": "^4.1.4",
     "tough-cookie-file-store": "^2.0.3"
   },

@@ -1,5 +1,4 @@
 import url from 'url'
-import JSEncrypt from 'node-jsencrypt'
 import got, { Got } from 'got'
 import { CookieJar } from 'tough-cookie'
 import {
@@ -13,8 +12,18 @@ import {
   ConfigurationOptions
 } from './types'
 import { log } from './log'
-import { getSignature } from './util'
-import { WEB_URL, API_URL, AUTH_URL, UserAgent, clientSuffix } from './const'
+import { getSignature, rsaEncrypt } from './util'
+import {
+  WEB_URL,
+  API_URL,
+  AUTH_URL,
+  UserAgent,
+  clientSuffix,
+  AppID,
+  ClientType,
+  ReturnURL,
+  AccountType
+} from './const'
 
 const config = {
   clientId: '538135150693412',
@@ -23,9 +32,10 @@ const config = {
 }
 
 interface CacheQuery {
-  appId: string
+  captchaToken: string
   reqId: string
   lt: string
+  paramId: string
 }
 
 interface LoginResponse {
@@ -34,6 +44,17 @@ interface LoginResponse {
   toUrl: string
 }
 
+interface TokenSession {
+  res_code: number
+  res_message: string
+  accessToken: string
+  familySessionKey: string
+  familySessionSecret: string
+  loginName: string
+  refreshToken: string
+  sessionKey: string
+  sessionSecret: string
+}
 /**
  * 天翼网盘客户端
  * @public
@@ -43,7 +64,6 @@ export default class CloudClient {
   #sessionKey = ''
   username: string
   password: string
-  #cacheQuery: CacheQuery
   cookie: CookieJar
   readonly request: Got
 
@@ -72,7 +92,7 @@ export default class CloudClient {
               options.url.href.includes(API_URL) &&
               !options.url.href.includes('getSessionForPC.action')
             ) {
-              const accessToken = await this.getAccessToken()
+              const accessToken = this.#accessToken
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
               const signature = getSignature({
@@ -85,12 +105,16 @@ export default class CloudClient {
               options.headers['Timestamp'] = time
               options.headers['Accesstoken'] = accessToken
               options.headers['Accept'] = 'application/json;charset=UTF-8'
+            } else if (options.url.href.includes(WEB_URL)) {
+              const urlObj = new URL(options.url)
+              urlObj.searchParams.set('sessionKey', this.#sessionKey)
+              options.url = urlObj
             }
           }
         ],
         afterResponse: [
           async (response, retryWithMergedOptions) => {
-            log.debug(`url: ${response.requestUrl}, response: ${response.body}`)
+            log.debug(`url: ${response.requestUrl}, response: ${response.body}, cookie:${JSON.stringify(this.cookie.serializeSync())}`)
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
@@ -153,52 +177,49 @@ export default class CloudClient {
         )
         .then((res) => {
           const { query } = url.parse(res.url, true)
+          console.log(query)
           resolve(query)
         })
         .catch((e) => reject(e))
     })
   }
 
-  /**
-   * 获取登录的参数
-   * @returns
-   */
-  #appConf(): Promise<{
-    data: {
-      returnUrl: string
-      paramId: string
-    }
-  }> {
-    return this.request
-      .post(`${AUTH_URL}/api/logbox/oauth2/appConf.do`, {
-        headers: {
-          Referer: AUTH_URL,
-          lt: this.#cacheQuery.lt,
-          REQID: this.#cacheQuery.reqId
-        },
-        form: { version: '2.0', appKey: this.#cacheQuery.appId }
+  async getLoginForm(): Promise<CacheQuery> {
+    const res = await this.request
+      .get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
+        searchParams: {
+          appId: AppID,
+          clientType: ClientType,
+          returnURL: ReturnURL,
+          timeStamp: Date.now()
+        }
       })
-      .json()
+      .text()
+    if (res) {
+      const captchaToken = res.match(`'captchaToken' value='(.+?)'`)[1]
+      const lt = res.match(`lt = "(.+?)"`)[1]
+      const paramId = res.match(`paramId = "(.+?)"`)[1]
+      const reqId = res.match(`reqId = "(.+?)"`)[1]
+      return { captchaToken, lt, paramId, reqId }
+    }
+    return null
   }
 
-  #builLoginForm = (encrypt, appConf) => {
-    const jsencrypt = new JSEncrypt()
+  #builLoginForm = (encrypt, appConf: CacheQuery) => {
     const keyData = `-----BEGIN PUBLIC KEY-----\n${encrypt.pubKey}\n-----END PUBLIC KEY-----`
-    jsencrypt.setPublicKey(keyData)
-    const usernameEncrypt = Buffer.from(jsencrypt.encrypt(this.username), 'base64').toString('hex')
-    const passwordEncrypt = Buffer.from(jsencrypt.encrypt(this.password), 'base64').toString('hex')
+    const usernameEncrypt = rsaEncrypt(keyData, this.username)
+    const passwordEncrypt = rsaEncrypt(keyData, this.password)
     const data = {
-      appKey: 'cloud',
-      version: '2.0',
-      accountType: '01',
-      mailSuffix: '@189.cn',
+      appKey: AppID,
+      accountType: AccountType,
+      // mailSuffix: '@189.cn',
       validateCode: '',
-      captchaToken: '',
+      captchaToken: appConf.captchaToken,
       dynamicCheck: 'FALSE',
       clientType: '1',
       cb_SaveName: '3',
       isOauth2: false,
-      returnUrl: appConf.returnUrl,
+      returnUrl: ReturnURL,
       paramId: appConf.paramId,
       userName: `${encrypt.pre}${usernameEncrypt}`,
       password: `${encrypt.pre}${passwordEncrypt}`
@@ -209,7 +230,7 @@ export default class CloudClient {
   /**
    * 用户名密码登录
    * */
-  login(): Promise<any> {
+  login(): Promise<TokenSession> {
     /**
      * 1.获取公钥
      * 2.获取登录参数
@@ -226,22 +247,19 @@ export default class CloudClient {
         //1.获取公钥
         this.getEncrypt(),
         //2.获取登录参数
-        this.redirectURL().then((query: CacheQuery) => {
-          this.#cacheQuery = query
-          return this.#appConf()
-        })
+        this.getLoginForm()
       ])
         .then((res: any[]) => {
           const encrypt = res[0].data
-          const appConf = res[1].data
+          const appConf = res[1] as CacheQuery
           const data = this.#builLoginForm(encrypt, appConf)
           //3.获取登录地址
           return this.request
             .post(`${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`, {
               headers: {
                 Referer: AUTH_URL,
-                lt: this.#cacheQuery.lt,
-                REQID: this.#cacheQuery.reqId
+                lt: appConf.lt,
+                REQID: appConf.reqId
               },
               form: data
             })
@@ -252,7 +270,24 @@ export default class CloudClient {
           if (res.result !== 0) {
             reject(res.msg)
           } else {
-            return this.request.get(res.toUrl).then((r) => resolve(r.statusCode))
+            const params = {
+              appId: AppID,
+              redirectURL: res.toUrl,
+              ...clientSuffix()
+            }
+            return this.request
+              .post(`${API_URL}/getSessionForPC.action`, {
+                searchParams: params,
+                headers: {
+                  Accept: 'application/json;charset=UTF-8'
+                }
+              })
+              .json()
+              .then((r: TokenSession) => {
+                this.#sessionKey = r.sessionKey
+                this.#accessToken = r.accessToken
+                resolve(r)
+              })
           }
         })
         .catch((e) => reject(e))
@@ -325,38 +360,6 @@ export default class CloudClient {
         `${WEB_URL}/mkt/userSign.action?rand=${new Date().getTime()}&clientType=TELEANDROID&version=${
           config.version
         }&model=${config.model}`
-      )
-      .json()
-  }
-
-  /**
-   * 任务无效， 1.0.4版本废弃
-   * @deprecated 任务过期
-   */
-  taskSign(): Promise<UserTaskResponse> {
-    return this.request(
-      'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN'
-    ).json()
-  }
-
-  /**
-   * 任务无效， 1.0.4版本废弃
-   * @deprecated 任务过期
-   */
-  taskPhoto(): Promise<UserTaskResponse> {
-    return this.request(
-      'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN'
-    ).json()
-  }
-
-  /**
-   * 任务无效， 1.0.3版本废弃
-   * @deprecated 任务过期
-   */
-  taskKJ(): Promise<UserTaskResponse> {
-    return this.request
-      .get(
-        'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN'
       )
       .json()
   }

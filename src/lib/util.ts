@@ -9,9 +9,18 @@ const sortParameter = (data): string => {
   return e.join('&')
 }
 
-const getSignature = (data) => {
+export const getSignature = (data) => {
   const parameter = sortParameter(data)
   return crypto.createHash('md5').update(parameter).digest('hex')
 }
 
-export { getSignature }
+export const rsaEncrypt = (publicKey: string, origData: string | Uint8Array) => {
+  const encryptedData = crypto.publicEncrypt(
+    {
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_PADDING
+    },
+    Buffer.from(origData)
+  )
+  return encryptedData.toString('hex').toUpperCase()
+}
