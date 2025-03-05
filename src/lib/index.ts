@@ -1,4 +1,2 @@
-import CloudClient from './CloudClient'
-
-export { CloudClient }
+export * from './CloudClient'
 export * from './types'

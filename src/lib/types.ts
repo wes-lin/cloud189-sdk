@@ -152,4 +152,5 @@ export interface ConfigurationOptions {
   password?: string
   /** 登录的cookie,如不传用户名和密码时需要传入 */
   cookie?: CookieJar
+  accessToken?: string
 }

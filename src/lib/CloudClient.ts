@@ -55,11 +55,144 @@ interface TokenSession {
   sessionKey: string
   sessionSecret: string
 }
+
+export class CloudAuthClient {
+  readonly request: Got
+
+  constructor() {
+    this.request = got.extend({
+      headers: {
+        'User-Agent': UserAgent,
+        Accept: 'application/json;charset=UTF-8'
+      },
+      hooks: {
+        afterResponse: [
+          async (response, retryWithMergedOptions) => {
+            log.debug(`url: ${response.requestUrl}, response: ${response.body})}`)
+            return response
+          }
+        ]
+      }
+    })
+  }
+
+  /**
+   * 获取加密参数
+   * @returns
+   */
+  getEncrypt(): Promise<{
+    data: {
+      pubKey: string
+      pre: string
+    }
+  }> {
+    return this.request.post(`${AUTH_URL}/api/logbox/config/encryptConf.do`).json()
+  }
+
+  async getLoginForm(): Promise<CacheQuery> {
+    const res = await this.request
+      .get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
+        searchParams: {
+          appId: AppID,
+          clientType: ClientType,
+          returnURL: ReturnURL,
+          timeStamp: Date.now()
+        }
+      })
+      .text()
+    if (res) {
+      const captchaToken = res.match(`'captchaToken' value='(.+?)'`)[1]
+      const lt = res.match(`lt = "(.+?)"`)[1]
+      const paramId = res.match(`paramId = "(.+?)"`)[1]
+      const reqId = res.match(`reqId = "(.+?)"`)[1]
+      return { captchaToken, lt, paramId, reqId }
+    }
+    return null
+  }
+
+  #builLoginForm = (encrypt, appConf: CacheQuery, username: string, password: string) => {
+    const keyData = `-----BEGIN PUBLIC KEY-----\n${encrypt.pubKey}\n-----END PUBLIC KEY-----`
+    const usernameEncrypt = rsaEncrypt(keyData, username)
+    const passwordEncrypt = rsaEncrypt(keyData, password)
+    const data = {
+      appKey: AppID,
+      accountType: AccountType,
+      // mailSuffix: '@189.cn',
+      validateCode: '',
+      captchaToken: appConf.captchaToken,
+      dynamicCheck: 'FALSE',
+      clientType: '1',
+      cb_SaveName: '3',
+      isOauth2: false,
+      returnUrl: ReturnURL,
+      paramId: appConf.paramId,
+      userName: `${encrypt.pre}${usernameEncrypt}`,
+      password: `${encrypt.pre}${passwordEncrypt}`
+    }
+    return data
+  }
+
+  async getSessionForPC(param: { redirectURL?: string }) {
+    const params = {
+      appId: AppID,
+      redirectURL: param.redirectURL,
+      ...clientSuffix()
+    }
+    const res = await this.request
+      .post(`${API_URL}/getSessionForPC.action`, {
+        searchParams: params,
+        headers: {
+          Accept: 'application/json;charset=UTF-8'
+        }
+      })
+      .json<TokenSession>()
+    return res
+  }
+
+  /**
+   * 用户名密码登录
+   * */
+  async login(username: string, password: string): Promise<TokenSession> {
+    if (!username || !password) {
+      throw new Error('Please provide username and password!')
+    }
+    log.debug('login...')
+    try {
+      const res = await Promise.all([
+        //1.获取公钥
+        this.getEncrypt(),
+        //2.获取登录参数
+        this.getLoginForm()
+      ])
+      const encrypt = res[0].data
+      const appConf = res[1]
+      const data = this.#builLoginForm(encrypt, appConf, username, password)
+      const loginRes = await this.request
+        .post(`${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`, {
+          headers: {
+            Referer: AUTH_URL,
+            lt: appConf.lt,
+            REQID: appConf.reqId
+          },
+          form: data
+        })
+        .json<LoginResponse>()
+      if (loginRes.result !== 0) {
+        throw new Error(loginRes.msg)
+      }
+      return await this.getSessionForPC({ redirectURL: loginRes.toUrl })
+    } catch (e) {
+      log.error(e)
+      throw e
+    }
+  }
+}
+
 /**
  * 天翼网盘客户端
  * @public
  */
-export default class CloudClient {
+export class CloudClient {
   #accessToken = ''
   #sessionKey = ''
   username: string
@@ -71,6 +204,7 @@ export default class CloudClient {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
+    this.#accessToken = _options.accessToken
     if (_options.cookie) {
       this.cookie = _options.cookie
     } else {
@@ -88,11 +222,9 @@ export default class CloudClient {
       hooks: {
         beforeRequest: [
           async (options) => {
-            if (
-              options.url.href.includes(API_URL) &&
-              !options.url.href.includes('getSessionForPC.action')
-            ) {
+            if (options.url.href.includes(API_URL)) {
               const accessToken = this.#accessToken
+              console.log(accessToken)
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
               const signature = getSignature({
@@ -114,7 +246,9 @@ export default class CloudClient {
         ],
         afterResponse: [
           async (response, retryWithMergedOptions) => {
-            log.debug(`url: ${response.requestUrl}, response: ${response.body}, cookie:${JSON.stringify(this.cookie.serializeSync())}`)
+            log.debug(
+              `url: ${response.requestUrl}, response: ${response.body}, cookie:${JSON.stringify(this.cookie.serializeSync())}`
+            )
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
@@ -153,171 +287,12 @@ export default class CloudClient {
   }
 
   /**
-   * 获取加密参数
-   * @returns
-   */
-  getEncrypt(): Promise<{
-    data: {
-      pubKey: string
-      pre: string
-    }
-  }> {
-    return this.request.post(`${AUTH_URL}/api/logbox/config/encryptConf.do`).json()
-  }
-
-  /**
-   * 跳转到登录页面
-   * @returns 登录的参数
-   */
-  redirectURL(): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.request
-        .get(
-          `${WEB_URL}/api/portal/loginUrl.action?redirectURL=${WEB_URL}/web/redirect.html?returnURL=/main.action`
-        )
-        .then((res) => {
-          const { query } = url.parse(res.url, true)
-          console.log(query)
-          resolve(query)
-        })
-        .catch((e) => reject(e))
-    })
-  }
-
-  async getLoginForm(): Promise<CacheQuery> {
-    const res = await this.request
-      .get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
-        searchParams: {
-          appId: AppID,
-          clientType: ClientType,
-          returnURL: ReturnURL,
-          timeStamp: Date.now()
-        }
-      })
-      .text()
-    if (res) {
-      const captchaToken = res.match(`'captchaToken' value='(.+?)'`)[1]
-      const lt = res.match(`lt = "(.+?)"`)[1]
-      const paramId = res.match(`paramId = "(.+?)"`)[1]
-      const reqId = res.match(`reqId = "(.+?)"`)[1]
-      return { captchaToken, lt, paramId, reqId }
-    }
-    return null
-  }
-
-  #builLoginForm = (encrypt, appConf: CacheQuery) => {
-    const keyData = `-----BEGIN PUBLIC KEY-----\n${encrypt.pubKey}\n-----END PUBLIC KEY-----`
-    const usernameEncrypt = rsaEncrypt(keyData, this.username)
-    const passwordEncrypt = rsaEncrypt(keyData, this.password)
-    const data = {
-      appKey: AppID,
-      accountType: AccountType,
-      // mailSuffix: '@189.cn',
-      validateCode: '',
-      captchaToken: appConf.captchaToken,
-      dynamicCheck: 'FALSE',
-      clientType: '1',
-      cb_SaveName: '3',
-      isOauth2: false,
-      returnUrl: ReturnURL,
-      paramId: appConf.paramId,
-      userName: `${encrypt.pre}${usernameEncrypt}`,
-      password: `${encrypt.pre}${passwordEncrypt}`
-    }
-    return data
-  }
-
-  /**
-   * 用户名密码登录
-   * */
-  login(): Promise<TokenSession> {
-    /**
-     * 1.获取公钥
-     * 2.获取登录参数
-     * 3.获取登录地址
-     * 4.跳转到登录页
-     */
-    return new Promise((resolve, reject) => {
-      if (!this.username || !this.password) {
-        throw new Error('Please provide username and password!')
-      }
-      log.debug('login...')
-      this.cookie.removeAllCookiesSync()
-      Promise.all([
-        //1.获取公钥
-        this.getEncrypt(),
-        //2.获取登录参数
-        this.getLoginForm()
-      ])
-        .then((res: any[]) => {
-          const encrypt = res[0].data
-          const appConf = res[1] as CacheQuery
-          const data = this.#builLoginForm(encrypt, appConf)
-          //3.获取登录地址
-          return this.request
-            .post(`${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`, {
-              headers: {
-                Referer: AUTH_URL,
-                lt: appConf.lt,
-                REQID: appConf.reqId
-              },
-              form: data
-            })
-            .json()
-        })
-        .then((res: LoginResponse) => {
-          // 4.跳转到登录页
-          if (res.result !== 0) {
-            reject(res.msg)
-          } else {
-            const params = {
-              appId: AppID,
-              redirectURL: res.toUrl,
-              ...clientSuffix()
-            }
-            return this.request
-              .post(`${API_URL}/getSessionForPC.action`, {
-                searchParams: params,
-                headers: {
-                  Accept: 'application/json;charset=UTF-8'
-                }
-              })
-              .json()
-              .then((r: TokenSession) => {
-                this.#sessionKey = r.sessionKey
-                this.#accessToken = r.accessToken
-                resolve(r)
-              })
-          }
-        })
-        .catch((e) => reject(e))
-    })
-  }
-
-  /**
-   * 是否存在登录信息
-   * @returns
-   */
-  isLoggedSession(): boolean {
-    const loginUserCookie = this.cookie
-      .getCookiesSync(WEB_URL)
-      ?.find((cookie) => cookie.key === 'COOKIE_LOGIN_USER' && cookie.value)
-    if (loginUserCookie) {
-      return true
-    }
-    return false
-  }
-
-  /**
    * 获取 sessionKey
    * @param needRefresh - 是否重新获取
    * @returns sessionKey
    */
   async getSessionKey(needRefresh = false): Promise<string> {
     if (!this.#sessionKey || needRefresh) {
-      if (!this.isLoggedSession()) {
-        await this.login()
-      }
       const { sessionKey } = await this.#getUserBriefInfo()
       this.#sessionKey = sessionKey
     }
