@@ -1,3 +1,5 @@
+import { Store } from './store'
+
 /**
  * 账户家庭信息
  * @public
@@ -140,31 +142,30 @@ export interface ConfigurationOptions {
   username?: string
   /** 密码 */
   password?: string
-  token: AccessTokenStore
+  token?: Store
 }
 
 /**
  * accessToken 有效期7天，可以通过refreshToken取新的accessToken
  */
-export interface TokenSession extends AccessTokenStore {
+export interface TokenSession {
   res_code: number
   res_message: string
+  accessToken: string
   familySessionKey: string
   familySessionSecret: string
+  refreshToken: string
   loginName: string
   sessionKey: string
 }
 
-export interface RefreshTokenSession extends AccessTokenStore {
+export interface RefreshTokenSession {
   expiresIn: number
+  accessToken: string
+  refreshToken: string
 }
 
 export interface ClientSession {
   accessToken: string
   sessionKey: string
-}
-
-export interface AccessTokenStore {
-  accessToken: string
-  refreshToken: string
 }

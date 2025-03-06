@@ -9,8 +9,7 @@ import {
   ConfigurationOptions,
   ClientSession,
   RefreshTokenSession,
-  TokenSession,
-  AccessTokenStore
+  TokenSession
 } from './types'
 import { log } from './log'
 import { getSignature, rsaEncrypt } from './util'
@@ -25,6 +24,7 @@ import {
   ReturnURL,
   AccountType
 } from './const'
+import { Store, MemoryStore } from './store'
 
 const config = {
   clientId: '538135150693412',
@@ -202,7 +202,7 @@ export class CloudAuthClient {
 export class CloudClient {
   username: string
   password: string
-  token: AccessTokenStore
+  tokenStore: Store
   readonly request: Got
   readonly authClient: CloudAuthClient
   readonly session: ClientSession
@@ -211,7 +211,7 @@ export class CloudClient {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
-    this.token = _options.token
+    this.tokenStore = _options.token || new MemoryStore()
     this.authClient = new CloudAuthClient()
     this.session = {
       accessToken: '',
@@ -298,31 +298,32 @@ export class CloudClient {
   }
 
   async getSession() {
-    if (this.token) {
-      if (this.token.accessToken) {
-        try {
-          return await this.authClient.loginByAccessToken(this.token.accessToken)
-        } catch (e) {
-          log.error(e)
-        }
-      }
-      if (this.token.refreshToken) { 
-        try {
-          const refreshTokenSession = await this.authClient.refreshToken(this.token.refreshToken)
-          this.token.accessToken = refreshTokenSession.accessToken
-          return await this.authClient.loginByAccessToken(this.token.accessToken)
-        } catch (e) {
-          log.error(e)
-        }
+    const accessToken = await this.tokenStore.getAccessToken()
+    if (accessToken) {
+      try {
+        return await this.authClient.loginByAccessToken(accessToken)
+      } catch (e) {
+        log.error(e)
       }
     }
+    const refreshToken = await this.tokenStore.getRefreshToken()
+    if (refreshToken) {
+      try {
+        const refreshTokenSession = await this.authClient.refreshToken(refreshToken)
+        await this.tokenStore.updateAccessToken(refreshTokenSession.accessToken)
+        return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
+      } catch (e) {
+        log.error(e)
+      }
+    }
+
     if (this.username && this.password) {
       try {
         const loginToken = await this.authClient.loginByPassword(this.username, this.password)
-        this.token = {
+        await this.tokenStore.update({
           accessToken: loginToken.accessToken,
           refreshToken: loginToken.refreshToken
-        }
+        })
         return loginToken
       } catch (e) {
         log.error(e)
