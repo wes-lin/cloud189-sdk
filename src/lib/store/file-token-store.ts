@@ -2,6 +2,9 @@ import * as fs from 'node:fs'
 import * as promisesFs from 'node:fs/promises'
 import { MemoryStore } from './memstore'
 
+/**
+ * @public
+ */
 export class FileTokenStore extends MemoryStore {
   filePath: string
   constructor(filePath: string) {

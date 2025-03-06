@@ -9,7 +9,8 @@ import {
   ConfigurationOptions,
   ClientSession,
   RefreshTokenSession,
-  TokenSession
+  TokenSession,
+  CacheQuery
 } from './types'
 import { log } from './log'
 import { getSignature, rsaEncrypt } from './util'
@@ -32,19 +33,15 @@ const config = {
   version: '9.0.6'
 }
 
-interface CacheQuery {
-  captchaToken: string
-  reqId: string
-  lt: string
-  paramId: string
-}
-
 interface LoginResponse {
   result: number
   msg: string
   toUrl: string
 }
 
+/**
+ * @public
+ */
 export class CloudAuthClient {
   readonly request: Got
 

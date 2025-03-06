@@ -14,7 +14,7 @@ export const getSignature = (data) => {
   return crypto.createHash('md5').update(parameter).digest('hex')
 }
 
-export const rsaEncrypt = (publicKey: string, origData: string | Uint8Array) => {
+export const rsaEncrypt = (publicKey: string, origData: string) => {
   const encryptedData = crypto.publicEncrypt(
     {
       key: publicKey,

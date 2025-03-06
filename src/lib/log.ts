@@ -5,7 +5,7 @@ import WritableStream = NodeJS.WritableStream
 
 let printer: ((message: string) => void) | null = null
 
-export const debug = process.env.CLOUD189_VERBOSE === '1'
+export const debug = true
 
 export interface Fields {
   [index: string]: any

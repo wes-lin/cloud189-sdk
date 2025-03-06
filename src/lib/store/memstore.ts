@@ -1,5 +1,8 @@
 import { Store } from './store'
 
+/**
+ * @public
+ */
 export class MemoryStore extends Store {
   store = {
     accessToken: '',

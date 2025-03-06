@@ -1,20 +1,20 @@
 {
-  "name": "docs",
+  "name": "cloud189-sdk-docs",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "api-extractor": "api-extractor run",
-    "api-documenter": "api-documenter markdown -i temp -o docs/api",
-    "doc:preare": "npm run api-extractor && npm run api-documenter",
-    "doc:dev": "npm run doc:preare && vuepress dev docs",
-    "doc:build": "npm run build && npm run doc:preare && vuepress build docs",
+    "api-documenter": "api-documenter markdown -i ../temp -o api",
+    "preare": "npm run api-extractor && npm run api-documenter",
+    "dev": "npm run preare && vuepress dev",
+    "build": "npm run preare && vuepress build"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@microsoft/api-documenter": "^7.26.9",
-    "@microsoft/api-extractor": "^7.50.0",    
+    "@microsoft/api-extractor": "^7.50.0",
     "@vuepress/bundler-vite": "^2.0.0-rc.19",
     "@vuepress/theme-default": "^2.0.0-rc.78",
     "sass-embedded": "^1.85.0",

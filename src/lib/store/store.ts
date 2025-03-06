@@ -1,3 +1,6 @@
+/**
+ * @public
+ */
 export class Store {
   constructor() {}
 
