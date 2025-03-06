@@ -1,6 +1,6 @@
 {
   "name": "cloud189-sdk",
-  "version": "1.0.6-alpha.2",
+  "version": "1.0.6-alpha.3",
   "description": "基于node.js的第三方天翼云盘SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "start": "node ./test/app.js",
-    "debug": "set CLOUD189_VERBOSE='1' && npm run start",
+    "debug": "CLOUD189_VERBOSE=1 npm run start",
     "build": "tsc",
     "test": "mocha",
     "coverage": "nyc npm run test"

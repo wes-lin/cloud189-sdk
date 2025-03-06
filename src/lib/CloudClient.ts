@@ -9,7 +9,8 @@ import {
   ConfigurationOptions,
   ClientSession,
   RefreshTokenSession,
-  TokenSession
+  TokenSession,
+  AccessTokenStore
 } from './types'
 import { log } from './log'
 import { getSignature, rsaEncrypt } from './util'
@@ -138,10 +139,7 @@ export class CloudAuthClient {
    * 用户名密码登录
    * */
   async loginByPassword(username: string, password: string) {
-    if (!username || !password) {
-      throw new Error('Please provide username and password!')
-    }
-    log.debug('login...')
+    log.debug('loginByPassword...')
     try {
       const res = await Promise.all([
         //1.获取公钥
@@ -176,6 +174,7 @@ export class CloudAuthClient {
    * token登录
    */
   async loginByAccessToken(accessToken: string) {
+    log.debug('loginByAccessToken...')
     return await this.getSessionForPC({ accessToken })
   }
 
@@ -203,8 +202,7 @@ export class CloudAuthClient {
 export class CloudClient {
   username: string
   password: string
-  accessToken: string
-  refreshToken: string
+  token: AccessTokenStore
   readonly request: Got
   readonly authClient: CloudAuthClient
   readonly session: ClientSession
@@ -213,8 +211,7 @@ export class CloudClient {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
-    this.accessToken = _options.accessToken
-    this.refreshToken = _options.refreshToken
+    this.token = _options.token
     this.authClient = new CloudAuthClient()
     this.session = {
       accessToken: '',
@@ -294,18 +291,44 @@ export class CloudClient {
   }
 
   #valid = (options: ConfigurationOptions) => {
-    if (!options.accessToken && !options.refreshToken && (!options.username || !options.password)) {
+    if (!options.token && (!options.username || !options.password)) {
       log.error('valid')
-      throw new Error('Please provide username and password or accessToken or refreshToken!')
+      throw new Error('Please provide username and password or token !')
     }
   }
 
-  getSession() {
-    if (this.accessToken) {
-      return this.authClient.loginByAccessToken(this.accessToken)
-    } else {
-      return this.authClient.loginByPassword(this.username, this.password)
+  async getSession() {
+    if (this.token) {
+      if (this.token.accessToken) {
+        try {
+          return await this.authClient.loginByAccessToken(this.token.accessToken)
+        } catch (e) {
+          log.error(e)
+        }
+      }
+      if (this.token.refreshToken) { 
+        try {
+          const refreshTokenSession = await this.authClient.refreshToken(this.token.refreshToken)
+          this.token.accessToken = refreshTokenSession.accessToken
+          return await this.authClient.loginByAccessToken(this.token.accessToken)
+        } catch (e) {
+          log.error(e)
+        }
+      }
     }
+    if (this.username && this.password) {
+      try {
+        const loginToken = await this.authClient.loginByPassword(this.username, this.password)
+        this.token = {
+          accessToken: loginToken.accessToken,
+          refreshToken: loginToken.refreshToken
+        }
+        return loginToken
+      } catch (e) {
+        log.error(e)
+      }
+    }
+    throw new Error('Can not get session.')
   }
 
   async getSessionKey() {

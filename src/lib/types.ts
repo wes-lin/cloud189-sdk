@@ -140,31 +140,31 @@ export interface ConfigurationOptions {
   username?: string
   /** 密码 */
   password?: string
-  accessToken?: string
-  refreshToken?: string
+  token: AccessTokenStore
 }
 
 /**
  * accessToken 有效期7天，可以通过refreshToken取新的accessToken
  */
-export interface TokenSession {
+export interface TokenSession extends AccessTokenStore {
   res_code: number
   res_message: string
-  accessToken: string
   familySessionKey: string
   familySessionSecret: string
   loginName: string
-  refreshToken: string
   sessionKey: string
 }
 
-export interface RefreshTokenSession {
+export interface RefreshTokenSession extends AccessTokenStore {
   expiresIn: number
-  accessToken: string
-  refreshToken: string
 }
 
 export interface ClientSession {
   accessToken: string
   sessionKey: string
+}
+
+export interface AccessTokenStore {
+  accessToken: string
+  refreshToken: string
 }
