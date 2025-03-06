@@ -1,5 +1,7 @@
 # cloud189-sdk
 
+[![NPM](https://nodei.co/npm/cloud189-sdk.png?downloads=true&downloadRank=true&stars=true)](https://nodei.co/npm/cloud189-sdk/)
+
 > 基于node.js的天翼网盘sdk
 
 <div align="center">
