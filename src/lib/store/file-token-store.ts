@@ -20,17 +20,7 @@ export class FileTokenStore extends MemoryStore {
     }
   }
 
-  override updateAccessToken(accessToken: string): Promise<void> {
-    super.updateAccessToken(accessToken)
-    return this.#saveToFile(this.filePath, this.store)
-  }
-
-  override updateRefreshToken(refreshToken: string): Promise<void> {
-    super.updateRefreshToken(refreshToken)
-    return this.#saveToFile(this.filePath, this.store)
-  }
-
-  override update(token: { accessToken: string; refreshToken: string }) {
+  update(token: { accessToken: string; refreshToken?: string; expiresIn?: number }) {
     super.update(token)
     return this.#saveToFile(this.filePath, this.store)
   }

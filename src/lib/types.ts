@@ -153,6 +153,7 @@ export interface ConfigurationOptions {
   /** 密码 */
   password?: string
   token?: Store
+  ssonCookie?: string
 }
 
 /**

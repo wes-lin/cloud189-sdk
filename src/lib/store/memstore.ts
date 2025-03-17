@@ -6,35 +6,23 @@ import { Store } from './store'
 export class MemoryStore extends Store {
   store = {
     accessToken: '',
-    refreshToken: ''
+    refreshToken: '',
+    expiresIn: 0
   }
 
   constructor() {
     super()
   }
 
-  override getAccessToken() {
-    return Promise.resolve(this.store.accessToken)
+  get(): { accessToken: string; refreshToken: string; expiresIn: number } {
+    return this.store
   }
 
-  override updateAccessToken(accessToken: string) {
-    this.store.accessToken = accessToken
-    return Promise.resolve()
-  }
-
-  override updateRefreshToken(refreshToken: string): Promise<void> {
-    this.store.refreshToken = refreshToken
-    return Promise.resolve()
-  }
-
-  override getRefreshToken() {
-    return Promise.resolve(this.store.refreshToken)
-  }
-
-  override update(token: { accessToken: string; refreshToken: string }) {
+  update(token: { accessToken: string; refreshToken?: string; expiresIn?: number }) {
     this.store = {
       accessToken: token.accessToken,
-      refreshToken: token.refreshToken
+      refreshToken: token.refreshToken ?? this.store.refreshToken,
+      expiresIn: token.expiresIn ?? this.store.expiresIn
     }
   }
 }
