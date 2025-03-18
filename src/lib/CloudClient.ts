@@ -9,7 +9,8 @@ import {
   ConfigurationOptions,
   ClientSession,
   RefreshTokenSession,
-  TokenSession
+  TokenSession,
+  CacheQuery
 } from './types'
 import { log } from './log'
 import { getSignature, rsaEncrypt } from './util'
@@ -25,18 +26,12 @@ import {
   AccountType
 } from './const'
 import { Store, MemoryStore } from './store'
+import { checkError } from './error'
 
 const config = {
   clientId: '538135150693412',
   model: 'KB2000',
   version: '9.0.6'
-}
-
-interface CacheQuery {
-  captchaToken: string
-  reqId: string
-  lt: string
-  paramId: string
 }
 
 interface LoginResponse {
@@ -45,6 +40,9 @@ interface LoginResponse {
   toUrl: string
 }
 
+/**
+ * @public
+ */
 export class CloudAuthClient {
   readonly request: Got
 
@@ -58,6 +56,7 @@ export class CloudAuthClient {
         afterResponse: [
           async (response, retryWithMergedOptions) => {
             log.debug(`url: ${response.requestUrl}, response: ${response.body})}`)
+            checkError(response.body.toString())
             return response
           }
         ]
@@ -160,9 +159,6 @@ export class CloudAuthClient {
           form: data
         })
         .json<LoginResponse>()
-      if (loginRes.result !== 0) {
-        throw new Error(loginRes.msg)
-      }
       return await this.getSessionForPC({ redirectURL: loginRes.toUrl })
     } catch (e) {
       log.error(e)
@@ -176,6 +172,27 @@ export class CloudAuthClient {
   async loginByAccessToken(accessToken: string) {
     log.debug('loginByAccessToken...')
     return await this.getSessionForPC({ accessToken })
+  }
+
+  /**
+   * sso登录
+   */
+  async loginBySsoCooike(cookie: string) {
+    log.debug('loginBySsoCooike...')
+    const res = await this.request.get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
+      searchParams: {
+        appId: AppID,
+        clientType: ClientType,
+        returnURL: ReturnURL,
+        timeStamp: Date.now()
+      }
+    })
+    const redirect = await this.request(res.url, {
+      headers: {
+        Cookie: `SSON=${cookie}`
+      }
+    })
+    return await this.getSessionForPC({ redirectURL: redirect.url })
   }
 
   /**
@@ -202,6 +219,7 @@ export class CloudAuthClient {
 export class CloudClient {
   username: string
   password: string
+  ssonCookie: string
   tokenStore: Store
   readonly request: Got
   readonly authClient: CloudAuthClient
@@ -211,6 +229,7 @@ export class CloudClient {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
+    this.ssonCookie = _options.ssonCookie
     this.tokenStore = _options.token || new MemoryStore()
     this.authClient = new CloudAuthClient()
     this.session = {
@@ -223,7 +242,8 @@ export class CloudClient {
       },
       headers: {
         'User-Agent': UserAgent,
-        Referer: `${WEB_URL}/web/main/`
+        Referer: `${WEB_URL}/web/main/`,
+        Accept: 'application/json;charset=UTF-8'
       },
       hooks: {
         beforeRequest: [
@@ -241,7 +261,6 @@ export class CloudClient {
               options.headers['Signature'] = signature
               options.headers['Timestamp'] = time
               options.headers['Accesstoken'] = accessToken
-              options.headers['Accept'] = 'application/json;charset=UTF-8'
             } else if (options.url.href.includes(WEB_URL)) {
               const urlObj = new URL(options.url)
               if (options.url.href.includes('/open')) {
@@ -298,20 +317,38 @@ export class CloudClient {
   }
 
   async getSession() {
-    const accessToken = await this.tokenStore.getAccessToken()
-    if (accessToken) {
+    const { accessToken, expiresIn, refreshToken } = await this.tokenStore.get()
+
+    if (accessToken && expiresIn && expiresIn > Date.now()) {
       try {
         return await this.authClient.loginByAccessToken(accessToken)
       } catch (e) {
         log.error(e)
       }
     }
-    const refreshToken = await this.tokenStore.getRefreshToken()
+
     if (refreshToken) {
       try {
         const refreshTokenSession = await this.authClient.refreshToken(refreshToken)
-        await this.tokenStore.updateAccessToken(refreshTokenSession.accessToken)
+        await this.tokenStore.update({
+          accessToken: refreshTokenSession.accessToken,
+          expiresIn: new Date(Date.now() + refreshTokenSession.expiresIn * 1000).getTime()
+        })
         return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
+      } catch (e) {
+        log.error(e)
+      }
+    }
+
+    if (this.ssonCookie) {
+      try {
+        const loginToken = await this.authClient.loginBySsoCooike(this.ssonCookie)
+        await this.tokenStore.update({
+          accessToken: loginToken.accessToken,
+          refreshToken: loginToken.refreshToken,
+          expiresIn: new Date(Date.now() + 8640 * 1000).getTime()
+        })
+        return loginToken
       } catch (e) {
         log.error(e)
       }
@@ -322,7 +359,8 @@ export class CloudClient {
         const loginToken = await this.authClient.loginByPassword(this.username, this.password)
         await this.tokenStore.update({
           accessToken: loginToken.accessToken,
-          refreshToken: loginToken.refreshToken
+          refreshToken: loginToken.refreshToken,
+          expiresIn: new Date(Date.now() + 8640 * 1000).getTime()
         })
         return loginToken
       } catch (e) {
@@ -355,11 +393,7 @@ export class CloudClient {
    * @returns 账号容量结果
    */
   getUserSizeInfo(): Promise<UserSizeInfoResponse> {
-    return this.request
-      .get(`${WEB_URL}/api/portal/getUserSizeInfo.action`, {
-        headers: { Accept: 'application/json;charset=UTF-8' }
-      })
-      .json()
+    return this.request.get(`${WEB_URL}/api/portal/getUserSizeInfo.action`).json()
   }
 
   /**

@@ -1,11 +1,11 @@
-const { CloudClient } = require('../dist')
+const { CloudClient, FileTokenStore } = require('../dist')
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 ;(async () => {
   const client = new CloudClient({
     username: process.env.TY_USER_NAME,
     password: process.env.TY_PASSWORD,
-    accessToken: 'aa679cbcc7914bc4bbef58744c08db80'
+    token: new FileTokenStore(`.token/${process.env.TY_USER_NAME}.json`)
   })
   try {
     const t1 = await client.userSign()

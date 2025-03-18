@@ -134,6 +134,16 @@ export interface UserTaskResponse {
 }
 
 /**
+ * @public
+ */
+export interface CacheQuery {
+  captchaToken: string
+  reqId: string
+  lt: string
+  paramId: string
+}
+
+/**
  * 客户端初始化参数
  * @public
  */
@@ -143,9 +153,11 @@ export interface ConfigurationOptions {
   /** 密码 */
   password?: string
   token?: Store
+  ssonCookie?: string
 }
 
 /**
+ * @public
  * accessToken 有效期7天，可以通过refreshToken取新的accessToken
  */
 export interface TokenSession {
@@ -159,12 +171,18 @@ export interface TokenSession {
   sessionKey: string
 }
 
+/**
+ * @public
+ */
 export interface RefreshTokenSession {
   expiresIn: number
   accessToken: string
   refreshToken: string
 }
 
+/**
+ * @public
+ */
 export interface ClientSession {
   accessToken: string
   sessionKey: string

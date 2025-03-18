@@ -27,32 +27,42 @@ pnpm add cloud189-sdk
 ## 初始化
 
 ```javascript
-const { CloudClient } = require('cloud189-sdk')
+const { CloudClient, FileTokenStore } = require('cloud189-sdk')
 // 使用账号密码初始化
 const client = new CloudClient({
   username: 'username',
   password: 'password'
 })
 
-// 使用cookie初始化，建议同时传入账号密码, 便于自动登陆
-const cookies = [
-  'JSESSIONID=*******',
-  'COOKIE_LOGIN_USER=*******'
-]
-const cookieJar = new CookieJar()
-cookies.forEach((cookie) => cookieJar.setCookieSync(cookie, 'https://cloud.189.cn'))
+// 使用缓存文件token初始化
 const client = new CloudClient({
-  cookie: cookieJar
-})
-
-// 或者文件存储cookie
-const cookieJar = new CookieJar(new FileCookieStore('./cookie.json'))
-const client = new CloudClient({
-  username: "username",
+  username: 'username',
   password: 'password',
-  cookie: cookieJar
+  token: new FileTokenStore('userName.json')
 })
 
+// 自定义token存储
+const client = new CloudClient({
+  username: 'username',
+  password: 'password',
+  token: {
+    async getAccessToken() {
+      return 'AccessToken'
+    },
+    async getRefreshToken() {
+      return 'RefreshToken'
+    },
+    async updateRefreshToken(refreshToken) {
+      console.log(refreshToken)
+    },
+    async updateAccessToken(accessToken) {
+      console.log(accessToken)
+    },
+    async update(token) {
+      console.log(token)
+    }
+  }
+})
 ```
 
 ## 使用

@@ -1,29 +1,16 @@
-export class Store {
+/**
+ * @public
+ */
+export abstract class Store {
   constructor() {}
 
-  getAccessToken(): Promise<string | undefined>
+  abstract get():
+    | { accessToken: string; refreshToken: string; expiresIn: number }
+    | Promise<{ accessToken: string; refreshToken: string; expiresIn: number }>
 
-  getAccessToken(): unknown {
-    throw new Error('getAccessToken is not implemented')
-  }
-
-  getRefreshToken(): Promise<string | undefined>
-
-  getRefreshToken(): unknown {
-    throw new Error('getRefreshToken is not implemented')
-  }
-
-  updateRefreshToken(refreshToken: string): Promise<void> {
-    throw new Error('updateRefreshToken is not implemented')
-  }
-
-  updateAccessToken(accessToken: string): Promise<void> {
-    throw new Error('updateAccessToken is not implemented')
-  }
-
-  update(token: { accessToken: string; refreshToken: string })
-
-  update(token: { accessToken: string; refreshToken: string }): Promise<void> {
-    throw new Error('update is not implemented')
-  }
+  abstract update(token: {
+    accessToken: string
+    refreshToken?: string
+    expiresIn?: number
+  }): void | Promise<void>
 }
