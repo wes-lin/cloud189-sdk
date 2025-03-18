@@ -1,6 +1,6 @@
 {
   "name": "cloud189-sdk",
-  "version": "1.0.6-alpha.4",
+  "version": "1.0.6-alpha.5",
   "description": "基于node.js的第三方天翼云盘SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
