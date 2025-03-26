@@ -152,6 +152,7 @@ export interface ConfigurationOptions {
   username?: string
   /** 密码 */
   password?: string
+  /** token */
   token?: Store
   ssonCookie?: string
 }

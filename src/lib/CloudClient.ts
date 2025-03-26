@@ -224,6 +224,8 @@ export class CloudClient {
   readonly request: Got
   readonly authClient: CloudAuthClient
   readonly session: ClientSession
+  #sessionKeyPromise: Promise<TokenSession>
+  #accessTokenPromise: Promise<AccessTokenResponse>
 
   constructor(_options: ConfigurationOptions) {
     this.#valid(_options)
@@ -323,7 +325,7 @@ export class CloudClient {
       try {
         return await this.authClient.loginByAccessToken(accessToken)
       } catch (e) {
-        log.error(e)
+        log.debug(e)
       }
     }
 
@@ -336,7 +338,7 @@ export class CloudClient {
         })
         return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
       } catch (e) {
-        log.error(e)
+        log.debug(e)
       }
     }
 
@@ -350,7 +352,7 @@ export class CloudClient {
         })
         return loginToken
       } catch (e) {
-        log.error(e)
+        log.debug(e)
       }
     }
 
@@ -364,17 +366,32 @@ export class CloudClient {
         })
         return loginToken
       } catch (e) {
-        log.error(e)
+        log.debug(e)
       }
     }
     throw new Error('Can not get session.')
   }
 
+  /**
+   * 获取 sessionKey
+   * @returns sessionKey
+   */
   async getSessionKey() {
-    if (!this.session.sessionKey) {
-      this.session.sessionKey = (await this.getSession()).sessionKey
+    if (this.session.sessionKey) {
+      return this.session.sessionKey
     }
-    return this.session.sessionKey
+    if (!this.#sessionKeyPromise) {
+      this.#sessionKeyPromise = this.getSession()
+        .then((result) => {
+          this.session.sessionKey = result.sessionKey
+          return result
+        })
+        .finally(() => {
+          this.#sessionKeyPromise = null
+        })
+    }
+    const result = await this.#sessionKeyPromise
+    return result.sessionKey
   }
 
   /**
@@ -382,10 +399,21 @@ export class CloudClient {
    * @returns accessToken
    */
   async getAccessToken() {
-    if (!this.session.accessToken) {
-      this.session.accessToken = (await this.#getAccessTokenBySsKey()).accessToken
+    if (this.session.accessToken) {
+      return this.session.accessToken
     }
-    return this.session.accessToken
+    if (!this.#accessTokenPromise) {
+      this.#accessTokenPromise = this.#getAccessTokenBySsKey()
+        .then((result) => {
+          this.session.accessToken = result.accessToken
+          return result
+        })
+        .finally(() => {
+          this.#accessTokenPromise = null
+        })
+    }
+    const result = await this.#accessTokenPromise
+    return result.accessToken
   }
 
   /**
