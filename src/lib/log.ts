@@ -5,8 +5,6 @@ import WritableStream = NodeJS.WritableStream
 
 let printer: ((message: string) => void) | null = null
 
-export const debug = true
-
 export interface Fields {
   [index: string]: any
 }
@@ -21,7 +19,7 @@ export class Logger {
   messageTransformer: (message: string, level: LogLevel) => string = (it) => it
 
   get isDebugEnabled() {
-    return debug
+    return process.env.CLOUD189_VERBOSE == '1'
   }
 
   info(messageOrFields: Fields | null | string, message?: string) {
