@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      chalk:
-        specifier: ^4.1.2
-        version: 4.1.2
       got:
         specifier: 11.8.2
         version: 11.8.2

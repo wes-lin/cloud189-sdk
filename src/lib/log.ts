@@ -1,5 +1,3 @@
-import chalk from 'chalk'
-import { Chalk } from 'chalk'
 import fs from 'fs'
 import path from 'path'
 
@@ -13,7 +11,13 @@ export interface Fields {
 
 export type LogLevel = 'info' | 'warn' | 'debug' | 'notice' | 'error'
 
-export const PADDING = 2
+const LEVEL_LABELS: Record<LogLevel, string> = {
+  info: '[INFO]',
+  warn: '[WARN]',
+  error: '[ERROR]',
+  debug: '[DEBUG]',
+  notice: '[NOTICE]'
+}
 
 export interface LoggerOptions {
   consoleOutput?: boolean
@@ -27,8 +31,11 @@ export interface LoggerOptions {
 export class Logger {
   private fileStream: fs.WriteStream | null = null
   private currentFileSize = 0
-  private fileIndex = 0
   private readonly options: Required<LoggerOptions>
+  private readonly logDirectory: string
+  private readonly baseLogPath: string
+  private readonly logFileExt: string
+  private readonly baseLogName: string
 
   constructor(
     protected readonly stream: WritableStream,
@@ -44,6 +51,11 @@ export class Logger {
       ...options
     }
 
+    this.logDirectory = path.dirname(this.options.filePath)
+    this.baseLogPath = this.options.filePath
+    this.logFileExt = path.extname(this.baseLogPath)
+    this.baseLogName = path.basename(this.baseLogPath, this.logFileExt)
+
     if (this.options.fileOutput) {
       this.ensureLogDirectory()
       this.createFileStream()
@@ -53,66 +65,61 @@ export class Logger {
   messageTransformer: (message: string, level: LogLevel) => string = (it) => it
 
   private ensureLogDirectory() {
-    const dir = path.dirname(this.options.filePath)
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+    if (!fs.existsSync(this.logDirectory)) {
+      fs.mkdirSync(this.logDirectory, { recursive: true })
     }
   }
 
   private createFileStream() {
-    this.fileStream = fs.createWriteStream(this.options.filePath, { flags: 'a' })
-    this.currentFileSize = fs.existsSync(this.options.filePath)
-      ? fs.statSync(this.options.filePath).size
-      : 0
+    this.fileStream = fs.createWriteStream(this.baseLogPath, { flags: 'a' })
+    this.currentFileSize = fs.existsSync(this.baseLogPath) ? fs.statSync(this.baseLogPath).size : 0
   }
 
   private rotateLogFile() {
     if (!this.fileStream || !this.options.fileOutput) return
 
-    // Close current stream
     this.fileStream.end()
 
-    // Rotate files
-    const basePath = this.options.filePath
-    const ext = path.extname(basePath)
-    const baseName = path.basename(basePath, ext)
-
     // Delete oldest file if we've reached max files
-    const oldestFile = `${baseName}.${this.options.maxFiles}${ext}`
+    const oldestFile = path.join(
+      this.logDirectory,
+      `${this.baseLogName}.${this.options.maxFiles}${this.logFileExt}`
+    )
     if (fs.existsSync(oldestFile)) {
       fs.unlinkSync(oldestFile)
     }
 
     // Rename existing files
     for (let i = this.options.maxFiles - 1; i >= 1; i--) {
-      const oldFile = `${baseName}.${i}${ext}`
-      const newFile = `${baseName}.${i + 1}${ext}`
+      const oldFile = path.join(this.logDirectory, `${this.baseLogName}.${i}${this.logFileExt}`)
+      const newFile = path.join(this.logDirectory, `${this.baseLogName}.${i + 1}${this.logFileExt}`)
       if (fs.existsSync(oldFile)) {
         fs.renameSync(oldFile, newFile)
       }
     }
 
     // Rename current file to .1
-    fs.renameSync(basePath, `${baseName}.1${ext}`)
+    fs.renameSync(
+      this.baseLogPath,
+      path.join(this.logDirectory, `${this.baseLogName}.1${this.logFileExt}`)
+    )
 
     // Create new file stream
     this.createFileStream()
-    this.fileIndex = 0
     this.currentFileSize = 0
   }
 
   private writeToFile(message: string) {
     if (!this.fileStream || !this.options.fileOutput) return
 
-    const data = `${new Date().toISOString()} ${message}\n`
+    const data = `${message}\n`
     this.currentFileSize += Buffer.byteLength(data)
 
     if (this.currentFileSize > this.options.maxFileSize) {
       this.rotateLogFile()
-      this.fileStream.write(data)
-    } else {
-      this.fileStream.write(data)
     }
+
+    this.fileStream.write(data)
   }
 
   info(messageOrFields: Fields | null | string, message?: string) {
@@ -137,34 +144,37 @@ export class Logger {
     this.doLog(message, messageOrFields, 'notice')
   }
 
+  private getTimestamp(): string {
+    return new Date()
+      .toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+      .replace(/\//g, '-')
+  }
+
   private doLog(
     message: string | undefined | Error,
     messageOrFields: Fields | null | string,
     level: LogLevel
   ) {
-    if (message === undefined) {
-      this._doLog(messageOrFields as string, null, level)
-    } else {
-      this._doLog(message, messageOrFields as Fields | null, level)
-    }
+    const msg = message === undefined ? (messageOrFields as string) : message
+    const fields = message === undefined ? null : (messageOrFields as Fields | null)
+    this._doLog(msg, fields, level)
   }
 
   private _doLog(message: string | Error, fields: Fields | null, level: LogLevel) {
-    // noinspection SuspiciousInstanceOfGuard
-    if (message instanceof Error) {
-      message = message.stack || message.toString()
-    } else {
-      message = message.toString()
-    }
-
-    const levelIndicator = this.getLevelIndicator(level)
-    const color = LEVEL_TO_COLOR[level] || chalk.white
-    const formattedMessage = `${' '.repeat(PADDING)}${color(levelIndicator)} ${Logger.createMessage(
-      this.messageTransformer(message, level),
-      fields,
-      level,
-      color,
-      PADDING + 2 /* level indicator and space */
+    const messageStr =
+      message instanceof Error ? message.stack || message.toString() : message.toString()
+    const timestamp = this.getTimestamp()
+    const levelLabel = LEVEL_LABELS[level]
+    const formattedMessage = `[${timestamp}] ${levelLabel} ${Logger.createMessage(
+      this.messageTransformer(messageStr, level),
+      fields
     )}\n`
 
     if (this.options.consoleOutput) {
@@ -176,66 +186,35 @@ export class Logger {
     }
   }
 
-  private getLevelIndicator(level: LogLevel): string {
-    switch (level) {
-      case 'error':
-        return '⨯'
-      case 'warn':
-        return '⚠'
-      case 'notice':
-        return 'ℹ'
-      default:
-        return '•'
-    }
-  }
-
-  static createMessage(
-    message: string,
-    fields: Fields | null,
-    level: LogLevel,
-    color: (it: string) => string,
-    messagePadding = 0
-  ): string {
-    if (fields == null) {
+  static createMessage(message: string, fields: Fields | null): string {
+    if (!fields) {
       return message
     }
 
     const fieldPadding = ' '.repeat(Math.max(2, 16 - message.length))
-    let text = (level === 'error' ? color(message) : message) + fieldPadding
-    const fieldNames = Object.keys(fields)
-    let counter = 0
-    for (const name of fieldNames) {
-      let fieldValue = fields[name]
-      let valuePadding: string | null = null
-      // Remove unnecessary line breaks
-      if (fieldValue != null && typeof fieldValue === 'string' && fieldValue.includes('\n')) {
-        valuePadding = ' '.repeat(messagePadding + message.length + fieldPadding.length + 2)
-        fieldValue = fieldValue.replace(/\n\s*\n/g, `\n${valuePadding}`)
-      } else if (Array.isArray(fieldValue)) {
-        fieldValue = JSON.stringify(fieldValue)
-      }
+    let text = message + fieldPadding
 
-      text += `${color(name)}=${fieldValue}`
-      if (++counter !== fieldNames.length) {
-        if (valuePadding == null) {
-          text += ' '
-        } else {
-          text += '\n' + valuePadding
-        }
+    const fieldNames = Object.keys(fields)
+    for (const name of fieldNames) {
+      let value = fields[name]
+      if (value instanceof Error) {
+        value = value.stack || value.toString()
+      } else if (Array.isArray(value)) {
+        value = JSON.stringify(value)
       }
+      text += `${name}=${value} `
     }
-    return text
+
+    return text.trim()
   }
 
   log(message: string): void {
     const formattedMessage = `${message}\n`
 
-    if (printer == null) {
-      if (this.options.consoleOutput) {
-        this.stream.write(formattedMessage)
-      }
-    } else {
+    if (printer) {
       printer(message)
+    } else if (this.options.consoleOutput) {
+      this.stream.write(formattedMessage)
     }
 
     if (this.options.fileOutput) {
@@ -246,16 +225,11 @@ export class Logger {
   close(): void {
     if (this.fileStream) {
       this.fileStream.end()
+      this.fileStream = null
     }
   }
-}
 
-const LEVEL_TO_COLOR: { [index: string]: Chalk } = {
-  info: chalk.blue,
-  warn: chalk.yellow,
-  error: chalk.red,
-  debug: chalk.white,
-  notice: chalk.green
+  static fromConfig(options: LoggerOptions): Logger {
+    return new Logger(process.stdout, options)
+  }
 }
-
-export const log = new Logger(process.stdout)
