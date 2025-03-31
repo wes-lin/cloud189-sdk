@@ -15,12 +15,13 @@ export type LogLevel = 'info' | 'warn' | 'debug' | 'notice' | 'error'
 
 export const PADDING = 2
 
-interface LoggerOptions {
+export interface LoggerOptions {
   consoleOutput?: boolean
   fileOutput?: boolean
   filePath?: string
   maxFileSize?: number
   maxFiles?: number
+  isDebugEnabled?: boolean
 }
 
 export class Logger {
@@ -39,6 +40,7 @@ export class Logger {
       filePath: path.join(process.cwd(), 'logs', 'app.log'),
       maxFileSize: 1024 * 1024 * 10, // 10MB
       maxFiles: 5,
+      isDebugEnabled: false,
       ...options
     }
 
@@ -49,10 +51,6 @@ export class Logger {
   }
 
   messageTransformer: (message: string, level: LogLevel) => string = (it) => it
-
-  get isDebugEnabled() {
-    return process.env.CLOUD189_VERBOSE == '1'
-  }
 
   private ensureLogDirectory() {
     const dir = path.dirname(this.options.filePath)
@@ -130,7 +128,7 @@ export class Logger {
   }
 
   debug(messageOrFields: Fields | null | string, message?: string) {
-    if (this.isDebugEnabled) {
+    if (this.options.isDebugEnabled) {
       this.doLog(message, messageOrFields, 'debug')
     }
   }
@@ -161,7 +159,6 @@ export class Logger {
 
     const levelIndicator = this.getLevelIndicator(level)
     const color = LEVEL_TO_COLOR[level] || chalk.white
-    this.stream.write(`${' '.repeat(PADDING)}${color(levelIndicator)} `)
     const formattedMessage = `${' '.repeat(PADDING)}${color(levelIndicator)} ${Logger.createMessage(
       this.messageTransformer(message, level),
       fields,

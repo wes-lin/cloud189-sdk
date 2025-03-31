@@ -12,7 +12,7 @@ import {
   TokenSession,
   CacheQuery
 } from './types'
-import { log } from './log'
+import { log, Logger } from './log'
 import { getSignature, rsaEncrypt } from './util'
 import {
   WEB_URL,
@@ -45,8 +45,10 @@ interface LoginResponse {
  */
 export class CloudAuthClient {
   readonly request: Got
+  readonly log: Logger
 
-  constructor() {
+  constructor(options: { log?: Logger }) {
+    this.log = options.log || log
     this.request = got.extend({
       headers: {
         'User-Agent': UserAgent,
@@ -55,7 +57,7 @@ export class CloudAuthClient {
       hooks: {
         afterResponse: [
           async (response, retryWithMergedOptions) => {
-            log.debug(`url: ${response.requestUrl}, response: ${response.body})}`)
+            this.log.debug(`url: ${response.requestUrl}, response: ${response.body})}`)
             checkError(response.body.toString())
             return response
           }
@@ -138,7 +140,7 @@ export class CloudAuthClient {
    * 用户名密码登录
    * */
   async loginByPassword(username: string, password: string) {
-    log.debug('loginByPassword...')
+    this.log.debug('loginByPassword...')
     try {
       const res = await Promise.all([
         //1.获取公钥
@@ -161,7 +163,7 @@ export class CloudAuthClient {
         .json<LoginResponse>()
       return await this.getSessionForPC({ redirectURL: loginRes.toUrl })
     } catch (e) {
-      log.error(e)
+      this.log.error(e)
       throw e
     }
   }
@@ -170,7 +172,7 @@ export class CloudAuthClient {
    * token登录
    */
   async loginByAccessToken(accessToken: string) {
-    log.debug('loginByAccessToken...')
+    this.log.debug('loginByAccessToken...')
     return await this.getSessionForPC({ accessToken })
   }
 
@@ -178,7 +180,7 @@ export class CloudAuthClient {
    * sso登录
    */
   async loginBySsoCooike(cookie: string) {
-    log.debug('loginBySsoCooike...')
+    this.log.debug('loginBySsoCooike...')
     const res = await this.request.get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
       searchParams: {
         appId: AppID,
@@ -224,6 +226,7 @@ export class CloudClient {
   readonly request: Got
   readonly authClient: CloudAuthClient
   readonly session: ClientSession
+  readonly log: Logger
   #sessionKeyPromise: Promise<TokenSession>
   #accessTokenPromise: Promise<AccessTokenResponse>
 
@@ -233,7 +236,10 @@ export class CloudClient {
     this.password = _options.password
     this.ssonCookie = _options.ssonCookie
     this.tokenStore = _options.token || new MemoryStore()
-    this.authClient = new CloudAuthClient()
+    this.log = _options.log || log
+    this.authClient = new CloudAuthClient({
+      log: this.log
+    })
     this.session = {
       accessToken: '',
       sessionKey: ''
@@ -286,20 +292,20 @@ export class CloudClient {
         ],
         afterResponse: [
           async (response, retryWithMergedOptions) => {
-            log.debug(`url: ${response.requestUrl}, response: ${response.body}`)
+            this.log.debug(`url: ${response.requestUrl}, response: ${response.body}`)
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
                 errorMsg: string
               }
               if (errorCode === 'InvalidAccessToken') {
-                log.debug('InvalidAccessToken retry...')
-                log.debug('Refresh AccessToken')
+                this.log.debug('InvalidAccessToken retry...')
+                this.log.debug('Refresh AccessToken')
                 this.session.accessToken = ''
                 return retryWithMergedOptions({})
               } else if (errorCode === 'InvalidSessionKey') {
-                log.debug('InvalidSessionKey retry...')
-                log.debug('Refresh InvalidSessionKey')
+                this.log.debug('InvalidSessionKey retry...')
+                this.log.debug('Refresh InvalidSessionKey')
                 this.session.sessionKey = ''
                 return retryWithMergedOptions({})
               }
@@ -313,7 +319,7 @@ export class CloudClient {
 
   #valid = (options: ConfigurationOptions) => {
     if (!options.token && (!options.username || !options.password)) {
-      log.error('valid')
+      this.log.error('valid')
       throw new Error('Please provide username and password or token !')
     }
   }
@@ -325,7 +331,7 @@ export class CloudClient {
       try {
         return await this.authClient.loginByAccessToken(accessToken)
       } catch (e) {
-        log.debug(e)
+        this.log.debug(e)
       }
     }
 
@@ -338,7 +344,7 @@ export class CloudClient {
         })
         return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
       } catch (e) {
-        log.debug(e)
+        this.log.debug(e)
       }
     }
 
@@ -352,7 +358,7 @@ export class CloudClient {
         })
         return loginToken
       } catch (e) {
-        log.debug(e)
+        this.log.debug(e)
       }
     }
 
@@ -366,7 +372,7 @@ export class CloudClient {
         })
         return loginToken
       } catch (e) {
-        log.debug(e)
+        this.log.debug(e)
       }
     }
     throw new Error('Can not get session.')

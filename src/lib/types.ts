@@ -1,3 +1,4 @@
+import { Logger } from './log'
 import { Store } from './store'
 
 /**
@@ -155,6 +156,7 @@ export interface ConfigurationOptions {
   /** token */
   token?: Store
   ssonCookie?: string
+  log?: Logger
 }
 
 /**
