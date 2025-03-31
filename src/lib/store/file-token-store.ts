@@ -1,5 +1,6 @@
 import * as fs from 'node:fs'
 import * as promisesFs from 'node:fs/promises'
+import path from 'path'
 import { MemoryStore } from './memstore'
 
 /**
@@ -13,10 +14,18 @@ export class FileTokenStore extends MemoryStore {
     if (!filePath) {
       throw new Error('Unknown file for read/write token')
     }
+    this.ensureTokenDirectory(filePath)
 
     const dataJson = this.#loadFromFile(filePath)
     if (dataJson) {
       super.update(dataJson)
+    }
+  }
+
+  private ensureTokenDirectory(filePath: string) {
+    const dir = path.dirname(filePath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
     }
   }
 
