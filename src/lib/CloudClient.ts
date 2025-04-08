@@ -47,7 +47,6 @@ let log = Logger.fromConfig({})
  */
 export class CloudAuthClient {
   readonly request: Got
-  readonly log: Logger
 
   constructor() {
     this.request = got.extend({
