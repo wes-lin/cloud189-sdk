@@ -133,3 +133,5 @@ dist
 /temp
 
 .token
+
+/docs/api

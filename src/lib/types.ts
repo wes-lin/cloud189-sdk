@@ -1,4 +1,4 @@
-import { LoggerOptions } from './log'
+import { LoggerOptions } from '@netdrive-sdk/log'
 import { Store } from './store'
 
 /**

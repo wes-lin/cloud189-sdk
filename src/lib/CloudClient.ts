@@ -12,7 +12,7 @@ import {
   TokenSession,
   CacheQuery
 } from './types'
-import { Logger } from './log'
+import { Logger } from '@netdrive-sdk/log'
 import { getSignature, rsaEncrypt } from './util'
 import {
   WEB_URL,
