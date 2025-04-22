@@ -1,4 +1,3 @@
-import { LoggerOptions } from '@netdrive-sdk/log'
 import { Store } from './store'
 
 /**
@@ -156,7 +155,6 @@ export interface ConfigurationOptions {
   /** token */
   token?: Store
   ssonCookie?: string
-  logConfig?: LoggerOptions
 }
 
 /**

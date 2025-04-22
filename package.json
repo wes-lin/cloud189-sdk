@@ -27,7 +27,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@netdrive-sdk/log": "1.0.0-alpha.1",
+    "@netdrive-sdk/log": "1.0.0",
     "got": "11.8.2"
   },
   "engines": {
