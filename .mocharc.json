@@ -1,5 +1,7 @@
 {
-  "spec": ["**/**/*.spec.*"],
-  "loader": "ts-node/esm",
-  "extensions": ["ts", "tsx", "js"]
+  "spec": ["test/**/*.spec.ts"],
+  "require": ["ts-node/register"],
+  "timeout": 5000,
+  "exit": true,
+  "color": true
 }
