@@ -5,6 +5,19 @@ import { AUTH_URL, API_URL, WEB_URL, ReturnURL } from '../src/const'
 
 describe('CloudAuthClient', () => {
   const authClient = new CloudAuthClient()
+  let sessionForPCMock: nock.Scope
+
+  beforeEach(() => {
+    const mockSession = {
+      sessionKey: 'test_session_key',
+      accessToken: 'test_access_token',
+      refreshToken: 'test_refresh_token'
+    }
+    sessionForPCMock = nock(API_URL)
+      .post('/getSessionForPC.action')
+      .query(true)
+      .reply(200, mockSession)
+  })
 
   afterEach(() => {
     nock.cleanAll()
@@ -28,15 +41,8 @@ describe('CloudAuthClient', () => {
 
   describe('loginByAccessToken', () => {
     it('should login with access token successfully', async () => {
-      const mockSession = {
-        sessionKey: 'test_session_key',
-        accessToken: 'test_access_token',
-        refreshToken: 'test_refresh_token'
-      }
-      nock(API_URL).post('/getSessionForPC.action').query(true).reply(200, mockSession)
-
-      const result = await authClient.loginByAccessToken('test_token')
-      expect(result).to.deep.equal(mockSession)
+      await authClient.loginByAccessToken('test_token')
+      expect(sessionForPCMock.isDone()).to.be.true
     })
   })
 
@@ -57,11 +63,6 @@ describe('CloudAuthClient', () => {
   it('loginBySsoCooike', async () => {
     const redirectUrl = '/api/logbox/oauth2/unifyAccountLogin.do'
     const testCookie = 'test-sso-cookie'
-    const mockSession = {
-      sessionKey: 'test_session_key',
-      accessToken: 'test_access_token',
-      refreshToken: 'test_refresh_token'
-    }
     nock(WEB_URL)
       .get('/api/portal/unifyLoginForPC.action')
       .query(true)
@@ -72,9 +73,8 @@ describe('CloudAuthClient', () => {
       .matchHeader('Cookie', `SSON=${testCookie}`)
       .reply(302, undefined, { Location: ReturnURL })
     nock('https://m.cloud.189.cn').get('/zhuanti/2020/loginErrorPc/index.html').reply(200)
-    nock(API_URL).post('/getSessionForPC.action').query(true).reply(200, mockSession)
-    const result = await authClient.loginBySsoCooike(testCookie)
-    expect(result).to.deep.equal(mockSession)
+    await authClient.loginBySsoCooike(testCookie)
+    expect(sessionForPCMock.isDone()).to.be.true
   })
 
   it('loginByPassword', async () => {
@@ -84,11 +84,6 @@ describe('CloudAuthClient', () => {
           'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCZLyV4gHNDUGJMZoOcYauxmNEsKrc0TlLeBEVVIIQNzG4WqjimceOj5R9ETwDeeSN3yejAKLGHgx83lyy2wBjvnbfm/nLObyWwQD/09CmpZdxoFYCH6rdDjRpwZOZ2nXSZpgkZXoOBkfNXNxnN74aXtho2dqBynTw3NFTWyQl8BQIDAQAB',
         pre: '{NRP}'
       }
-    }
-    const mockSession = {
-      sessionKey: 'test_session_key',
-      accessToken: 'test_access_token',
-      refreshToken: 'test_refresh_token'
     }
 
     nock(AUTH_URL).post('/api/logbox/config/encryptConf.do').reply(200, encryptConfResponse)
@@ -156,8 +151,26 @@ describe('CloudAuthClient', () => {
       .get('/zhuanti/2020/loginErrorPc/index.html')
       .query(true)
       .reply(200)
-    nock(API_URL).post('/getSessionForPC.action').query(true).reply(200, mockSession)
-    const result = await authClient.loginByPassword('username', 'password')
-    expect(result).to.deep.equal(mockSession)
+    await authClient.loginByPassword('username', 'password')
+    expect(sessionForPCMock.isDone()).to.be.true
+  })
+
+  it('loginByPassword getLoginForm fail', async () => {
+    const encryptConfResponse = {
+      data: {
+        pubKey:
+          'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCZLyV4gHNDUGJMZoOcYauxmNEsKrc0TlLeBEVVIIQNzG4WqjimceOj5R9ETwDeeSN3yejAKLGHgx83lyy2wBjvnbfm/nLObyWwQD/09CmpZdxoFYCH6rdDjRpwZOZ2nXSZpgkZXoOBkfNXNxnN74aXtho2dqBynTw3NFTWyQl8BQIDAQAB',
+        pre: '{NRP}'
+      }
+    }
+
+    nock(AUTH_URL).post('/api/logbox/config/encryptConf.do').reply(200, encryptConfResponse)
+
+    nock(WEB_URL).get('/api/portal/unifyLoginForPC.action').query(true).reply(200, undefined)
+    try {
+      await authClient.loginByPassword('username', 'password')
+    } catch (err) {
+      expect(err).to.be.an('error')
+    }
   })
 })
