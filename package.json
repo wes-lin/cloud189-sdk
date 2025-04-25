@@ -15,7 +15,8 @@
     "docs:build": "npm run build && cd docs && npm run build",
     "docs:dev": "npm run build && cd docs && npm run dev",
     "test": "mocha",
-    "coverage": "nyc npm run test"
+    "coverage": "nyc mocha",
+    "coveralls": "nyc report --reporter=text-lcov > coverage/lcov.info"
   },
   "author": "wes lin",
   "repository": {
@@ -40,6 +41,7 @@
     "@types/sinon": "^17.0.4",
     "@typescript-eslint/parser": "^6.17.0",
     "chai": "4.4.1",
+    "coveralls": "^3.1.1",
     "mocha": "^10.4.0",
     "nock": "14.0.0-beta.7",
     "nyc": "^15.1.0",

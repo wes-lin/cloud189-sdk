@@ -16,7 +16,7 @@ describe('FileTokenStore', () => {
 
   afterEach(() => {
     sinon.restore()
-    // 清理测试文件
+    // Clean up test files
     if (fs.existsSync(testFilePath)) {
       fs.unlinkSync(testFilePath)
     }
@@ -26,23 +26,23 @@ describe('FileTokenStore', () => {
   })
 
   describe('constructor', () => {
-    it('应该创建不存在的目录', () => {
-      // 先 stub fs 方法
+    it('should create non-existent directories', () => {
+      // Stub fs methods first
       const mkdirStub = sinon.stub(fs, 'mkdirSync')
       const existsStub = sinon.stub(fs, 'existsSync')
 
-      // 默认设置 existsSync 返回 true
+      // Configure existsSync to return false by default
       existsStub.returns(false)
       new FileTokenStore(testFilePath)
       const dir = path.dirname(testFilePath)
       expect(mkdirStub.calledWith(dir, { recursive: true })).to.be.true
     })
 
-    it('空文件路径应该抛出错误', () => {
+    it('should throw error for empty file path', () => {
       expect(() => new FileTokenStore('')).to.throw('Unknown file for read/write token')
     })
 
-    it('应该从现有文件加载token数据', () => {
+    it('should load token data from existing file', () => {
       const testData = {
         accessToken: 'existing_token',
         refreshToken: 'existing_refresh',
@@ -54,21 +54,21 @@ describe('FileTokenStore', () => {
       expect(store.get()).to.deep.equal(testData)
     })
 
-    it('损坏的JSON文件应该抛出错误', () => {
+    it('should throw error for corrupted JSON file', () => {
       fs.writeFileSync(testFilePath, 'invalid json')
       expect(() => new FileTokenStore(testFilePath)).to.throw('Could not parse token file')
     })
   })
 
-  describe('继承MemoryStore功能', () => {
-    it('应该正确继承get方法', async () => {
+  describe('MemoryStore inheritance', () => {
+    it('should correctly inherit get method', async () => {
       const token = { accessToken: 'test' }
       const fileTokenStore = new FileTokenStore(testFilePath)
       await fileTokenStore.update(token)
       expect(fileTokenStore.get().accessToken).to.deep.equal(token.accessToken)
     })
 
-    it('空存储应该返回空', () => {
+    it('should return empty for empty store', () => {
       const fileTokenStore = new FileTokenStore(testFilePath)
       expect(fileTokenStore.get().accessToken).to.be.empty
     })

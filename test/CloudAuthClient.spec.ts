@@ -37,6 +37,20 @@ describe('CloudAuthClient', () => {
       const result = await authClient.getEncrypt()
       expect(result).to.deep.equal(mockResponse)
     })
+
+    it('should return encrypt data fail', async () => {
+      nock(AUTH_URL).post('/api/logbox/config/encryptConf.do').reply(200, {
+        result: -1,
+        msg: 'get encrypt data fail'
+      })
+
+      try {
+        await authClient.getEncrypt()
+      } catch (err) {
+        expect(err).to.be.an('error')
+        expect(err.message).to.equal('get encrypt data fail')
+      }
+    })
   })
 
   describe('loginByAccessToken', () => {
@@ -57,6 +71,20 @@ describe('CloudAuthClient', () => {
 
       const result = await authClient.refreshToken('old_refresh_token')
       expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should refresh token fail', async () => {
+      nock(AUTH_URL).post('/api/oauth2/refreshToken.do').reply(200, {
+        result: -117,
+        msg: 'refresh token fail'
+      })
+
+      try {
+        await authClient.refreshToken('old_refresh_token')
+      } catch (err) {
+        expect(err).to.be.an('error')
+        expect(err.message).to.equal('refresh token fail')
+      }
     })
   })
 
