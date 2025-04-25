@@ -14,6 +14,9 @@
   <a href="https://npmcharts.com/compare/cloud189-sdk?minimal=true">
     <img src="http://img.shields.io/npm/dm/cloud189-sdk.svg">
   </a>
+  <a href="https://coveralls.io/github/wes-lin/cloud189-sdk">
+    <img src="https://coveralls.io/repos/github/wes-lin/cloud189-sdk/badge.svg?branch=dev">
+  </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
   </a>
