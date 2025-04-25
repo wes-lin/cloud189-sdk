@@ -10,12 +10,13 @@
     "!__tests__"
   ],
   "scripts": {
-    "start": "node ./test/app.js",
+    "start": "node ./example/app.js",
     "build": "tsc",
     "docs:build": "npm run build && cd docs && npm run build",
     "docs:dev": "npm run build && cd docs && npm run dev",
     "test": "mocha",
-    "coverage": "nyc npm run test"
+    "coverage": "nyc mocha",
+    "coveralls": "nyc report --reporter=text-lcov > coverage/lcov.info"
   },
   "author": "wes lin",
   "repository": {
@@ -27,7 +28,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "chalk": "^4.1.2",
+    "@netdrive-sdk/log": "1.0.0",
     "got": "11.8.2"
   },
   "engines": {
@@ -37,12 +38,15 @@
     "@types/chai": "^4.3.16",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.12.13",
+    "@types/sinon": "^17.0.4",
     "@typescript-eslint/parser": "^6.17.0",
     "chai": "4.4.1",
+    "coveralls": "^3.1.1",
     "mocha": "^10.4.0",
     "nock": "14.0.0-beta.7",
     "nyc": "^15.1.0",
     "prettier": "^3.3.2",
+    "sinon": "^20.0.0",
     "ts-node": "^10.9.2",
     "typescript": "4.9.5"
   }

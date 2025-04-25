@@ -4,9 +4,8 @@
     "module": "CommonJS",
     "esModuleInterop": true,
     "outDir": "dist",
-    "declaration": true,
+    "declaration": true
   },
-  "ts-node": { "esm": true },
-  "include": ["src/lib/**/*.ts"],
-  "exclude": ["node_modules"],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
 }

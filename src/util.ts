@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 
-const sortParameter = (data): string => {
+export const sortParameter = (data): string => {
   if (!data) {
     return ''
   }
