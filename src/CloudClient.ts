@@ -349,7 +349,7 @@ export class CloudClient {
         await this.tokenStore.update({
           accessToken: loginToken.accessToken,
           refreshToken: loginToken.refreshToken,
-          expiresIn: new Date(Date.now() + 8640 * 1000).getTime()
+          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
         })
         return loginToken
       } catch (e) {
@@ -363,7 +363,7 @@ export class CloudClient {
         await this.tokenStore.update({
           accessToken: loginToken.accessToken,
           refreshToken: loginToken.refreshToken,
-          expiresIn: new Date(Date.now() + 8640 * 1000).getTime()
+          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
         })
         return loginToken
       } catch (e) {
