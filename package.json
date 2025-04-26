@@ -1,6 +1,6 @@
 {
   "name": "cloud189-sdk",
-  "version": "1.0.6-alpha.6",
+  "version": "1.0.6",
   "description": "基于node.js的第三方天翼云盘SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,8 +14,8 @@
     "build": "tsc",
     "docs:build": "npm run build && cd docs && npm run build",
     "docs:dev": "npm run build && cd docs && npm run dev",
-    "test": "mocha",
-    "coverage": "nyc mocha",
+    "test": "node --security-revert=CVE-2023-46809 ./node_modules/mocha/bin/mocha",
+    "coverage": "nyc npm run test",
     "coveralls": "nyc report --reporter=text-lcov > coverage/lcov.info"
   },
   "author": "wes lin",

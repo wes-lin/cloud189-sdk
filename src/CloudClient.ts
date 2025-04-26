@@ -325,7 +325,7 @@ export class CloudClient {
       try {
         return await this.authClient.loginByAccessToken(accessToken)
       } catch (e) {
-        logger.debug(e)
+        logger.error(e)
       }
     }
 
@@ -334,11 +334,12 @@ export class CloudClient {
         const refreshTokenSession = await this.authClient.refreshToken(refreshToken)
         await this.tokenStore.update({
           accessToken: refreshTokenSession.accessToken,
+          refreshToken: refreshTokenSession.refreshToken,
           expiresIn: new Date(Date.now() + refreshTokenSession.expiresIn * 1000).getTime()
         })
         return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
       } catch (e) {
-        logger.debug(e)
+        logger.error(e)
       }
     }
 
@@ -352,7 +353,7 @@ export class CloudClient {
         })
         return loginToken
       } catch (e) {
-        logger.debug(e)
+        logger.error(e)
       }
     }
 
@@ -366,7 +367,7 @@ export class CloudClient {
         })
         return loginToken
       } catch (e) {
-        logger.debug(e)
+        logger.error(e)
       }
     }
     throw new Error('Can not get session.')

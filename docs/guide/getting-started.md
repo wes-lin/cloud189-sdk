@@ -27,7 +27,19 @@ pnpm add cloud189-sdk
 ## 初始化
 
 ```javascript
-const { CloudClient, FileTokenStore } = require('cloud189-sdk')
+const { CloudClient, FileTokenStore, logger } = require('cloud189-sdk')
+
+/**
+ * 自定义日志输出
+ * isDebugEnabled 开启请求具体日志信息
+ * fileOutput 开启文件文件日志记录
+ * consoleOutput 控制台日志输出
+ */
+logger.configure({
+  isDebugEnabled: true,
+  fileOutput: true
+})
+
 // 使用账号密码初始化
 const client = new CloudClient({
   username: 'username',
@@ -46,20 +58,15 @@ const client = new CloudClient({
   username: 'username',
   password: 'password',
   token: {
-    async getAccessToken() {
-      return 'AccessToken'
+    get() {
+      return {
+        accessToken: 'accessToken',
+        expiresIn: 1746204626761,
+        refreshToken: 'refreshToken'
+      }
     },
-    async getRefreshToken() {
-      return 'RefreshToken'
-    },
-    async updateRefreshToken(refreshToken) {
-      console.log(refreshToken)
-    },
-    async updateAccessToken(accessToken) {
-      console.log(accessToken)
-    },
-    async update(token) {
-      console.log(token)
+    update({ accessToken, expiresIn, refreshToken }) {
+      console.log(accessToken, expiresIn, refreshToken)
     }
   }
 })
