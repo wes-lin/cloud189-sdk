@@ -10,7 +10,12 @@ import {
   ClientSession,
   RefreshTokenSession,
   TokenSession,
-  CacheQuery
+  CacheQuery,
+  PageQuery,
+  MediaType,
+  OrderByType,
+  FileListResponse,
+  CreateFamilyIdFolderReuest
 } from './types'
 import { logger } from './log'
 import { getSignature, rsaEncrypt } from './util'
@@ -255,7 +260,7 @@ export class CloudClient {
               const { query } = url.parse(options.url.toString(), true)
               const time = String(Date.now())
               const signature = getSignature({
-                ...(options.method === 'GET' ? query : options.json),
+                ...(options.method === 'GET' ? query : options.json || options.form),
                 Timestamp: time,
                 AccessToken: accessToken
               })
@@ -266,10 +271,11 @@ export class CloudClient {
             } else if (options.url.href.includes(WEB_URL)) {
               const urlObj = new URL(options.url)
               if (options.url.href.includes('/open')) {
+                const { query } = url.parse(options.url.toString(), true)
                 const time = String(Date.now())
                 const appkey = '600100422'
                 const signature = getSignature({
-                  ...(options.method === 'GET' ? urlObj.searchParams : options.json),
+                  ...(options.method === 'GET' ? query : options.json || options.form),
                   Timestamp: time,
                   AppKey: appkey
                 })
@@ -462,6 +468,45 @@ export class CloudClient {
   familyUserSign(familyId: number): Promise<FamilyUserSignResponse> {
     return this.request
       .get(`${API_URL}/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`)
+      .json()
+  }
+
+  /**
+   * 获取家庭文件列表
+   * @param pageQuery
+   * @returns
+   */
+
+  getFamilyListFiles(pageQuery: PageQuery): Promise<FileListResponse> {
+    const defaultQuery = {
+      pageNum: 1,
+      pageSize: 60,
+      mediaType: MediaType.ALL.toString(),
+      orderBy: OrderByType.LAST_OP_TIME.toString(),
+      descending: true,
+      familyId: 0,
+      folderId: '',
+      iconOption: 5
+    }
+    const query = Object.assign(defaultQuery, pageQuery)
+    return this.request
+      .get(`${API_URL}/open/family/file/listFiles.action`, {
+        searchParams: query
+      })
+      .json()
+  }
+
+  /**
+   * 创建家庭文件夹
+   * @param folderReuest
+   * @returns
+   */
+
+  createFamilyFolder(folderReuest: CreateFamilyIdFolderReuest) {
+    return this.request
+      .post(`${API_URL}/open/family/file/createFolder.action`, {
+        form: folderReuest
+      })
       .json()
   }
 }

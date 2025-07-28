@@ -15,19 +15,31 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     // const t1 = await client.userSign()
     // console.log(t1)
     const info = await Promise.all([
-      client.getUserSizeInfo(),
-      client.getUserSizeInfo(),
-      client.getUserSizeInfo(),
       client.getUserSizeInfo()
+      // client.getUserSizeInfo(),
+      // client.getUserSizeInfo(),
+      // client.getUserSizeInfo()
     ])
     console.log(info)
-    // const { familyInfoResp } = await client.getFamilyList()
-    // console.log(familyInfoResp)
-    const res = await await Promise.all([
-      client.familyUserSign(735500198),
-      client.familyUserSign(735500198)
-    ])
+    const { familyInfoResp } = await client.getFamilyList()
+    console.log(familyInfoResp)
+    // const res = await await Promise.all([
+    //   client.familyUserSign(735500198),
+    //   client.familyUserSign(735500198)
+    // ])
+
+    const res = await client
+      .createFamilyFolder({
+        parentId: 5146334744064314,
+        folderName: '新建文件夹1',
+        familyId: 735500198
+      })
+      .json()
     console.log(res)
+    const res1 = await client.getFamilyListFiles({
+      familyId: 735500198
+    })
+    console.log(res1)
   } catch (e) {
     console.error(e)
   }
