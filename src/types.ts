@@ -254,10 +254,19 @@ export interface FolderItem {
   starLabel: number
 }
 
+/**
+ * 创建家庭文件夹
+ * @public
+ */
 export interface CreateFamilyIdFolderReuest {
   parentId: number
   folderName: string
   familyId: number
+}
+
+export interface RsaKeyResponse extends RsaKey {
+  res_code: number
+  res_message: string
 }
 
 /**
@@ -378,4 +387,11 @@ export interface RefreshTokenSession {
 export interface ClientSession {
   accessToken: string
   sessionKey: string
+}
+
+export interface RsaKey {
+  expire: number
+  pkId: string
+  pubKey: string
+  ver: string
 }

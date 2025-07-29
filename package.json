@@ -10,7 +10,7 @@
     "!__tests__"
   ],
   "scripts": {
-    "start": "node ./example/app.js",
+    "start": "ts-node ./example/app.ts",
     "build": "tsc",
     "docs:build": "npm run build && cd docs && npm run build",
     "docs:dev": "npm run build && cd docs && npm run dev",

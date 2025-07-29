@@ -15,10 +15,12 @@ import {
   MediaType,
   OrderByType,
   FileListResponse,
-  CreateFamilyIdFolderReuest
+  CreateFamilyIdFolderReuest,
+  RsaKeyResponse,
+  RsaKey
 } from './types'
 import { logger } from './log'
-import { getSignature, rsaEncrypt } from './util'
+import { aesECBEncrypt, getSignature, hmacSha1, randomString, rsaEncrypt } from './util'
 import {
   WEB_URL,
   API_URL,
@@ -28,7 +30,8 @@ import {
   AppID,
   ClientType,
   ReturnURL,
-  AccountType
+  AccountType,
+  UPLOAD_URL
 } from './const'
 import { Store, MemoryStore } from './store'
 import { checkError } from './error'
@@ -229,8 +232,10 @@ export class CloudClient {
   readonly request: Got
   readonly authClient: CloudAuthClient
   readonly session: ClientSession
+  private rsaKey: RsaKey
   #sessionKeyPromise: Promise<TokenSession>
   #accessTokenPromise: Promise<AccessTokenResponse>
+  #generateRsaKeyPromise: Promise<RsaKeyResponse>
 
   constructor(_options: ConfigurationOptions) {
     this.#valid(_options)
@@ -243,9 +248,12 @@ export class CloudClient {
       accessToken: '',
       sessionKey: ''
     }
+    this.rsaKey = null
     this.request = got.extend({
       retry: {
-        limit: 5
+        limit: 2,
+        statusCodes: [408, 413, 429],
+        errorCodes: ['ETIMEDOUT', 'ECONNRESET']
       },
       headers: {
         'User-Agent': UserAgent,
@@ -255,10 +263,10 @@ export class CloudClient {
       hooks: {
         beforeRequest: [
           async (options) => {
+            const time = String(Date.now())
+            const { query } = url.parse(options.url.toString(), true)
             if (options.url.href.includes(API_URL)) {
               const accessToken = await this.getAccessToken()
-              const { query } = url.parse(options.url.toString(), true)
-              const time = String(Date.now())
               const signature = getSignature({
                 ...(options.method === 'GET' ? query : options.json || options.form),
                 Timestamp: time,
@@ -269,10 +277,7 @@ export class CloudClient {
               options.headers['Timestamp'] = time
               options.headers['Accesstoken'] = accessToken
             } else if (options.url.href.includes(WEB_URL)) {
-              const urlObj = new URL(options.url)
               if (options.url.href.includes('/open')) {
-                const { query } = url.parse(options.url.toString(), true)
-                const time = String(Date.now())
                 const appkey = '600100422'
                 const signature = getSignature({
                   ...(options.method === 'GET' ? query : options.json || options.form),
@@ -285,14 +290,40 @@ export class CloudClient {
                 options.headers['AppKey'] = appkey
               }
               const sessionKey = await this.getSessionKey()
-              urlObj.searchParams.set('sessionKey', sessionKey)
-              options.url = urlObj
+              options.url.searchParams.set('sessionKey', sessionKey)
+            } else if (options.url.href.includes(UPLOAD_URL)) {
+              const sessionKey = await this.getSessionKey()
+              const rsaKey = await this.generateRsaKey()
+              const requestID = randomString('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx')
+              const uuid = randomString('xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx').slice(
+                0,
+                (16 + 16 * Math.random()) | 0
+              )
+              const params = aesECBEncrypt(query, uuid.substring(0, 16))
+              const data = {
+                SessionKey: sessionKey,
+                Operate: 'GET',
+                RequestURI: options.url.pathname,
+                Date: time,
+                params
+              }
+              const keyData = `-----BEGIN PUBLIC KEY-----\n${rsaKey.pubKey}\n-----END PUBLIC KEY-----`
+              const encryptionText = rsaEncrypt(keyData, uuid, 'base64')
+              options.headers['X-Request-Date'] = time
+              options.headers['X-Request-ID'] = requestID
+              options.headers['SessionKey'] = sessionKey
+              options.headers['EncryptionText'] = encryptionText
+              options.headers['PkId'] = rsaKey.pkId
+              options.headers['Signature'] = hmacSha1(data, uuid)
+              options.url.search = ''
+              options.url.hash = ''
+              options.url.searchParams.set('params', params)
             }
           }
         ],
         afterResponse: [
           async (response, retryWithMergedOptions) => {
-            logger.debug(`url: ${response.requestUrl}, response: ${response.body}`)
+            logger.debug(`url: ${response.url}, response: ${response.body}`)
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
@@ -424,6 +455,33 @@ export class CloudClient {
   }
 
   /**
+   * 获取 RSA key
+   * @returns RSAKey
+   */
+  async generateRsaKey() {
+    if (this.rsaKey && new Date(this.rsaKey.expire).getTime() > Date.now()) {
+      return this.rsaKey
+    }
+    if (!this.#generateRsaKeyPromise) {
+      this.#generateRsaKeyPromise = this.#generateRsaKey()
+        .then((res) => {
+          this.rsaKey = {
+            expire: res.expire,
+            pubKey: res.pubKey,
+            pkId: res.pkId,
+            ver: res.ver
+          }
+          return res
+        })
+        .finally(() => {
+          this.#generateRsaKeyPromise = null
+        })
+    }
+    const result = await this.#generateRsaKeyPromise
+    return result
+  }
+
+  /**
    * 获取用户网盘存储容量信息
    * @returns 账号容量结果
    */
@@ -452,6 +510,10 @@ export class CloudClient {
     return this.request.get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`).json()
   }
 
+  #generateRsaKey(): Promise<RsaKeyResponse> {
+    return this.request.get(`${WEB_URL}/api/security/generateRsaKey.action`).json()
+  }
+
   /**
    * 获取家庭信息
    * @returns 家庭列表信息
@@ -476,7 +538,6 @@ export class CloudClient {
    * @param pageQuery
    * @returns
    */
-
   getFamilyListFiles(pageQuery: PageQuery): Promise<FileListResponse> {
     const defaultQuery = {
       pageNum: 1,
@@ -501,12 +562,20 @@ export class CloudClient {
    * @param folderReuest
    * @returns
    */
-
   createFamilyFolder(folderReuest: CreateFamilyIdFolderReuest) {
     return this.request
       .post(`${API_URL}/open/family/file/createFolder.action`, {
         form: folderReuest
       })
       .json()
+  }
+
+  async upload(param: {
+    parentFolderId: number
+    fileName: string
+    fileSize: number
+    sliceSize: number
+  }) {
+    return this.request.get(`${UPLOAD_URL}/family/initMultiUpload`, { searchParams: param }).json()
   }
 }

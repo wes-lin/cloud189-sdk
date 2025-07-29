@@ -1,4 +1,4 @@
-const { CloudClient, FileTokenStore, logger } = require('../dist')
+import { CloudClient, FileTokenStore, logger } from '../src/index'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 ;(async () => {
@@ -28,18 +28,34 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   client.familyUserSign(735500198)
     // ])
 
-    const res = await client
-      .createFamilyFolder({
-        parentId: 5146334744064314,
-        folderName: '新建文件夹1',
-        familyId: 735500198
-      })
-      .json()
-    console.log(res)
+    // const res = await client
+    //   .createFamilyFolder({
+    //     parentId: 5146334744064314,
+    //     folderName: '新建文件夹1',
+    //     familyId: 735500198
+    //   })
+    //   .json()
+    // console.log(res)
     const res1 = await client.getFamilyListFiles({
       familyId: 735500198
     })
     console.log(res1)
+
+    const res2 = await Promise.all([
+      client.upload({
+        parentFolderId: 1,
+        fileName: '1',
+        fileSize: 0,
+        sliceSize: 0
+      }),
+      client.upload({
+        parentFolderId: 1,
+        fileName: '2',
+        fileSize: 0,
+        sliceSize: 0
+      })
+    ])
+    console.log(res2)
   } catch (e) {
     console.error(e)
   }
