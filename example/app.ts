@@ -36,23 +36,16 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   })
     //   .json()
     // console.log(res)
-    const res1 = await client.getFamilyListFiles({
-      familyId: 735500198
-    })
-    console.log(res1)
+    // const res1 = await client.getFamilyListFiles({
+    //   familyId: 735500198
+    // })
+    // console.log(res1)
 
     const res2 = await Promise.all([
       client.upload({
-        parentFolderId: 1,
-        fileName: '1',
-        fileSize: 0,
-        sliceSize: 0
-      }),
-      client.upload({
-        parentFolderId: 1,
-        fileName: '2',
-        fileSize: 0,
-        sliceSize: 0
+        parentFolderId: '423161205149947211',
+        filePath: 'd:\\wechat\\Untitled-1.mongodb',
+        familyId: 735500198
       })
     ])
     console.log(res2)

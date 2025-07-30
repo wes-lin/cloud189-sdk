@@ -1,4 +1,5 @@
 import crypto, { BinaryToTextEncoding } from 'crypto'
+import fs from 'fs'
 
 export const sortParameter = (data): string => {
   if (!data) {
@@ -35,7 +36,7 @@ export const aesECBEncrypt = (data, key: string) => {
     .join('&')
   const cipher = crypto.createCipheriv('aes-128-ecb', Buffer.from(key, 'utf8'), null)
   cipher.setAutoPadding(true)
-  let encrypted = cipher.update(Buffer.from(p).toString('hex'), 'utf-8', 'hex')
+  let encrypted = cipher.update(p, 'utf-8', 'hex')
   encrypted += cipher.final('hex')
   return encrypted
 }
@@ -49,10 +50,39 @@ export const hmacSha1 = (data, key, encoding: BinaryToTextEncoding = 'hex') => {
   return hmac.digest(encoding)
 }
 
+export const hexToBase64 = (data) => {
+  const buffer = Buffer.from(data, 'hex')
+  return buffer.toString('base64')
+}
+
 export const randomString = (f: string) => {
   return f.replace(/[xy]/g, (e) => {
     var t = (16 * Math.random()) | 0,
       n = 'x' === e ? t : (3 & t) | 8
     return n.toString(16)
   })
+}
+
+export const partSize = (size) => {
+  const DEFAULT = 1024 * 1024 * 10 // 10 MiB
+
+  if (size > DEFAULT * 2 * 999) {
+    const chunkSize = size / 1999
+    const ratio = chunkSize / DEFAULT
+    const multiplier = Math.max(Math.ceil(ratio), 5)
+    return multiplier * DEFAULT
+  }
+
+  if (size > DEFAULT * 999) {
+    return DEFAULT * 2 // 20 MiB
+  }
+
+  return DEFAULT
+}
+
+export const calculateFileMD5Sync = (filePath) => {
+  const fileBuffer = fs.readFileSync(filePath)
+  const hash = crypto.createHash('md5')
+  hash.update(fileBuffer)
+  return hash.digest('hex')
 }

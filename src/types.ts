@@ -395,3 +395,46 @@ export interface RsaKey {
   pubKey: string
   ver: string
 }
+
+interface UploadResponse {
+  code: string
+}
+
+export interface UploadInitResponse extends UploadResponse {
+  data: {
+    uploadType: number
+    uploadHost: string
+    uploadFileId: string
+    fileDataExists: number
+  }
+}
+
+export interface UploadCommitResponse extends UploadResponse {
+  file: {
+    userFileId: string
+    fileName: string
+    fileSize: number
+    fileMd5: string
+    createDate: string
+    rev: number
+    userId: number
+  }
+}
+
+export interface UploadPartsInfoResponse extends UploadResponse {
+  data: {
+    uploadFileId: string
+    uploadedPartList: string
+  }
+}
+
+type PartNumberKey = `partNumber_${number}`
+
+export interface MultiUploadUrlsResponse extends UploadResponse {
+  uploadUrls: {
+    [key: PartNumberKey]: {
+      requestURL: string
+      requestHeader: string
+    }
+  }
+}
