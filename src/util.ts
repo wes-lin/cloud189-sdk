@@ -56,7 +56,7 @@ export const hexToBase64 = (data) => {
   return buffer.toString('base64')
 }
 
-export const md5 = (data)=>{
+export const md5 = (data) => {
   return crypto.createHash('md5').update(data).digest('hex')
 }
 
@@ -96,20 +96,11 @@ export const calculateFileAndChunkMD5 = (
     const stream = fs.createReadStream(filePath, { highWaterMark: chunkSize })
     const fileHash = crypto.createHash('md5')
     const chunkMd5s = []
-    // const chunkPaths = []
-    // const tempDir = path.join(__dirname, 'temp', Date.now().toString())
-
-    // fs.mkdirSync(tempDir, { recursive: true })
-    // let chunkIndex = 0
 
     stream.on('data', (chunk) => {
       fileHash.update(chunk)
       const chunkHash = md5(chunk)
-      chunkMd5s.push(chunkHash)
-      // const chunkPath = path.join(tempDir, `chunk-${chunkIndex}`)
-      // fs.writeFileSync(chunkPath, chunk)
-      // chunkPaths.push(chunkPath)
-      // chunkIndex++
+      chunkMd5s.push(chunkHash.toUpperCase())
     })
 
     stream.on('end', () => {
@@ -119,7 +110,6 @@ export const calculateFileAndChunkMD5 = (
     })
 
     stream.on('error', (err) => {
-      // fs.rmSync(tempDir, { recursive: true, force: true })
       reject(err)
     })
   })

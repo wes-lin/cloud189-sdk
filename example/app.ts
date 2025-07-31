@@ -40,12 +40,25 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   familyId: 735500198
     // })
     // console.log(res1)
-
     const res2 = await Promise.all([
-      client.fastUpload({
+      client.upload({
         parentFolderId: '423161205149947211',
-        filePath: '.temp/random_1753944644.txt',
+        filePath: '.temp/random_1753972005.txt',
         familyId: 735500198
+      }),
+      // client.upload({
+      //   parentFolderId: '423161205149947211',
+      //   filePath: '.temp/random_1753972071.txt',
+      //   familyId: 735500198
+      // }),
+      // client.upload({
+      //   parentFolderId: '325551204724717311',
+      //   filePath: '.temp/random_1753972005.txt'
+      // })
+      client.upload({
+        parentFolderId: '223771204727864020',
+        filePath: '.temp/random_1753972071.txt',
+        familyId: 0
       })
     ])
     console.log(res2)

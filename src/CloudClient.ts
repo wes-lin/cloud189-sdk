@@ -2,7 +2,6 @@ import url from 'url'
 import fs from 'fs'
 import path from 'path'
 import got, { Got } from 'got'
-import crypto from 'crypto'
 import {
   UserSignResponse,
   UserSizeInfoResponse,
@@ -250,7 +249,7 @@ export class CloudClient {
   readonly authClient: CloudAuthClient
   readonly session: ClientSession
   private rsaKey: RsaKey
-  #sessionKeyPromise: Promise<TokenSession>
+  #sessionKeyPromise: Promise<string>
   #accessTokenPromise: Promise<AccessTokenResponse>
   #generateRsaKeyPromise: Promise<RsaKeyResponse>
 
@@ -316,6 +315,7 @@ export class CloudClient {
                 0,
                 (16 + 16 * Math.random()) | 0
               )
+              logger.debug(`upload query: ${JSON.stringify(query)}`)
               const params = aesECBEncrypt(query, uuid.substring(0, 16))
               const data = {
                 SessionKey: sessionKey,
@@ -439,14 +439,14 @@ export class CloudClient {
       this.#sessionKeyPromise = this.getSession()
         .then((result) => {
           this.session.sessionKey = result.sessionKey
-          return result
+          return result.sessionKey
         })
         .finally(() => {
           this.#sessionKeyPromise = null
         })
     }
     const result = await this.#sessionKeyPromise
-    return result.sessionKey
+    return result
   }
 
   /**
@@ -587,96 +587,237 @@ export class CloudClient {
       .json()
   }
 
-  async fastUpload(params: { parentFolderId: string; filePath: string; familyId: number }) {
-    const fileStats = await fs.promises.stat(params.filePath)
-    const fileName = encodeURIComponent(path.basename(params.filePath))
-    // const UPLOAD_PART_SIZE = 10 * 1024 * 1024
-    const fileSize = fileStats.size
-    const sliceSize = partSize(fileSize)
-    const { fileMd5, chunkMd5s } = await calculateFileAndChunkMD5(params.filePath, sliceSize)
-    const chunkCount = chunkMd5s.length
-    let sliceMd5
-    if (chunkCount === 1) {
-      sliceMd5 = fileMd5
-    } else {
-      sliceMd5 = md5(chunkMd5s.join('\n'))
-    }
+  async initMultiUpload(
+    params: {
+      parentFolderId: string
+      fileName: string
+      fileSize: number
+      sliceSize: number
+      fileMd5?: string
+      sliceMd5?: string
+    },
+    familyId?: number
+  ) {
+    const { parentFolderId, fileName, fileSize, sliceSize, fileMd5, sliceMd5 } = params
     const initParams = {
-      parentFolderId: params.parentFolderId,
+      parentFolderId,
       fileName,
       fileSize,
       sliceSize,
-      familyId: params.familyId,
+      ...(fileMd5 && sliceMd5 ? { fileMd5, sliceMd5 } : { lazyCheck: 1 })
+    }
+    if (familyId) {
+      return await this.request
+        .get(`${UPLOAD_URL}/family/initMultiUpload`, {
+          searchParams: {
+            ...initParams,
+            familyId
+          }
+        })
+        .json<UploadInitResponse>()
+    } else {
+      return await this.request
+        .get(`${UPLOAD_URL}/person/initMultiUpload`, {
+          searchParams: {
+            ...initParams
+          }
+        })
+        .json<UploadInitResponse>()
+    }
+  }
+
+  commitMultiUpload(
+    params: {
+      fileMd5: string
+      sliceMd5: string
+      uploadFileId: string
+      lazyCheck?: number
+    },
+    familyId?: number
+  ) {
+    return this.request
+      .get(`${UPLOAD_URL}/${familyId ? 'family' : 'person'}/commitMultiUploadFile`, {
+        searchParams: params
+      })
+      .json<UploadCommitResponse>()
+  }
+
+  checkTransSecond(
+    params: { fileMd5: string; sliceMd5: string; uploadFileId: string },
+    familyId?: number
+  ) {
+    return this.request
+      .get(`${UPLOAD_URL}/${familyId ? 'family' : 'person'}/checkTransSecond`, {
+        searchParams: params
+      })
+      .json<UploadInitResponse>()
+  }
+
+  async #parentUpload({ partNumber, md5, buffer, uploadFileId }) {
+    const partInfo = `${partNumber}-${hexToBase64(md5)}`
+    logger.debug(`upload part: ${partNumber}`)
+    const multiUploadUrParams = {
+      partInfo,
+      uploadFileId
+    }
+    const urls = await this.request
+      .get(`${UPLOAD_URL}/family/getMultiUploadUrls`, {
+        searchParams: multiUploadUrParams
+      })
+      .json<MultiUploadUrlsResponse>()
+    const { requestURL, requestHeader } = urls.uploadUrls[`partNumber_${partNumber}`]
+    const headers = requestHeader.split('&').reduce((acc, pair) => {
+      const key = pair.split('=')[0]
+      const value = pair.match(/=(.*)/)[1]
+      acc[key] = value
+      return acc
+    }, {})
+    logger.debug(`Upload URL: ${requestURL}`)
+    logger.debug(`Upload Headers: ${JSON.stringify(headers)}`)
+    const res = await got.put(requestURL, {
+      headers,
+      body: buffer
+    })
+  }
+
+  /**
+   * 单个小文件上传
+   */
+  async #singleUpload({
+    parentFolderId,
+    filePath,
+    fileName,
+    fileSize,
+    fileMd5,
+    sliceSize,
+    familyId
+  }) {
+    const sliceMd5 = fileMd5
+    const initParams = {
+      parentFolderId,
+      fileName,
+      fileSize,
+      sliceSize,
       fileMd5,
       sliceMd5
     }
-    console.log(sliceMd5)
-    console.log(fileMd5)
-    const res = await this.request
-      .get(`${UPLOAD_URL}/family/initMultiUpload`, { searchParams: initParams })
-      .json<UploadInitResponse>()
+    // md5校验
+    const res = await this.initMultiUpload(initParams, familyId)
+    const { uploadFileId, fileDataExists } = res.data
+    if (!fileDataExists) {
+      const fd = await fs.promises.open(filePath, 'r')
+      const buffer = Buffer.alloc(fileSize)
+      await fd.read(buffer, 0, fileSize)
+      await this.#parentUpload({
+        partNumber: 1,
+        md5: fileMd5,
+        buffer,
+        uploadFileId
+      })
+    } else {
+      logger.debug(`单文件 ${filePath} 秒传: ${uploadFileId}`)
+    }
+    return this.commitMultiUpload(
+      {
+        fileMd5,
+        sliceMd5,
+        uploadFileId
+      },
+      familyId
+    )
+  }
+
+  /**
+   * 大文件分块上传
+   */
+  async #multiUpload({
+    parentFolderId,
+    filePath,
+    fileName,
+    fileSize,
+    fileMd5,
+    sliceSize,
+    chunkMd5s,
+    familyId
+  }) {
+    const sliceMd5 = md5(chunkMd5s.join('\n'))
+    const initParams = {
+      parentFolderId,
+      fileName,
+      fileSize,
+      sliceSize
+    }
+    const res = await this.initMultiUpload(initParams, familyId)
     const { uploadFileId } = res.data
-    const commitParams = {
+    const checkTransSecondParams = {
       fileMd5,
       sliceMd5,
-      uploadFileId,
-      lazyCheck: chunkCount > 1 ? 1 : 0
+      uploadFileId
     }
-    if (res.data.fileDataExists) {
-      return this.request
-        .get(`${UPLOAD_URL}/family/commitMultiUploadFile`, {
-          searchParams: commitParams
+    // md5校验
+    const checkRes = await this.checkTransSecond(checkTransSecondParams, familyId)
+    if (!checkRes.data.fileDataExists) {
+      const fd = await fs.promises.open(filePath, 'r')
+      const chunkCount = chunkMd5s.length
+      for (let i = 0; i < chunkCount; i++) {
+        const partNumber = i + 1
+        const position = i * sliceSize
+        const length = Math.min(sliceSize, fileSize - position)
+        const buffer = Buffer.alloc(length)
+        await fd.read(buffer, 0, length, position)
+        await this.#parentUpload({
+          partNumber: partNumber,
+          md5: chunkMd5s[i],
+          buffer,
+          uploadFileId
         })
-        .json<UploadCommitResponse>()
-    } else {
-      const partsInfo = await this.request
-        .get(`${UPLOAD_URL}/family/getUploadedPartsInfo`, {
-          searchParams: {
-            uploadFileId
-          }
-        })
-        .json<UploadPartsInfoResponse>()
-      if (!partsInfo.data.uploadedPartList) {
-        const fd = await fs.promises.open(params.filePath, 'r')
-        for (let i = 0; i < chunkCount; i++) {
-          const partNumber = i + 1
-          const position = i * sliceSize
-          const length = Math.min(sliceSize, fileSize - position)
-          const buffer = Buffer.alloc(length)
-          await fd.read(buffer, 0, length, position)
-          const partInfo = `${partNumber}-${hexToBase64(chunkMd5s[i])}`
-          console.log('partInfo', partInfo)
-          logger.debug(`upload part: ${partNumber}`)
-          const multiUploadUrParams = {
-            partInfo,
-            uploadFileId
-          }
-          const urls = await this.request
-            .get(`${UPLOAD_URL}/family/getMultiUploadUrls`, {
-              searchParams: multiUploadUrParams
-            })
-            .json<MultiUploadUrlsResponse>()
-          const { requestURL, requestHeader } = urls.uploadUrls[`partNumber_${partNumber}`]
-          const headers = requestHeader.split('&').reduce((acc, pair) => {
-            const key = pair.split('=')[0]
-            const value = pair.match(/=(.*)/)[1]
-            acc[key] = value
-            return acc
-          }, {})
-          logger.debug(`requestURL: ${requestURL}`)
-          logger.debug(`requestHeaders: ${JSON.stringify(headers)}`)
-          const res = await got.put(requestURL, {
-            headers,
-            body: buffer
-          })
-        }
-        return this.request
-          .get(`${UPLOAD_URL}/family/commitMultiUploadFile`, {
-            searchParams: commitParams
-          })
-          .json<UploadCommitResponse>()
       }
+    } else {
+      logger.debug(`多块文件 ${filePath} 秒传: ${uploadFileId}`)
     }
-    return {}
+    return this.commitMultiUpload(
+      {
+        fileMd5,
+        sliceMd5,
+        uploadFileId,
+        lazyCheck: 1
+      },
+      familyId
+    )
+  }
+
+  /**
+   * 文件上传
+   * @param param
+   * @returns
+   */
+  async upload(param: { parentFolderId: string; filePath: string; familyId?: number }) {
+    const { filePath, parentFolderId, familyId } = param
+    const { size } = await fs.promises.stat(filePath)
+    const fileName = encodeURIComponent(path.basename(filePath))
+    const sliceSize = partSize(size)
+    const { fileMd5, chunkMd5s } = await calculateFileAndChunkMD5(filePath, sliceSize)
+    if (chunkMd5s.length === 1) {
+      return this.#singleUpload({
+        parentFolderId,
+        filePath,
+        fileName,
+        fileSize: size,
+        sliceSize,
+        fileMd5,
+        familyId
+      })
+    } else {
+      return this.#multiUpload({
+        parentFolderId,
+        filePath,
+        fileName,
+        fileSize: size,
+        sliceSize,
+        fileMd5,
+        chunkMd5s,
+        familyId
+      })
+    }
   }
 }
