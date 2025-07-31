@@ -1,5 +1,6 @@
 import crypto, { BinaryToTextEncoding } from 'crypto'
 import fs from 'fs'
+import path from 'path'
 
 export const sortParameter = (data): string => {
   if (!data) {
@@ -55,6 +56,10 @@ export const hexToBase64 = (data) => {
   return buffer.toString('base64')
 }
 
+export const md5 = (data)=>{
+  return crypto.createHash('md5').update(data).digest('hex')
+}
+
 export const randomString = (f: string) => {
   return f.replace(/[xy]/g, (e) => {
     var t = (16 * Math.random()) | 0,
@@ -80,9 +85,42 @@ export const partSize = (size) => {
   return DEFAULT
 }
 
-export const calculateFileMD5Sync = (filePath) => {
-  const fileBuffer = fs.readFileSync(filePath)
-  const hash = crypto.createHash('md5')
-  hash.update(fileBuffer)
-  return hash.digest('hex')
+export const calculateFileAndChunkMD5 = (
+  filePath,
+  chunkSize = 1024 * 1024
+): Promise<{
+  fileMd5: string
+  chunkMd5s: string[]
+}> => {
+  return new Promise((resolve, reject) => {
+    const stream = fs.createReadStream(filePath, { highWaterMark: chunkSize })
+    const fileHash = crypto.createHash('md5')
+    const chunkMd5s = []
+    // const chunkPaths = []
+    // const tempDir = path.join(__dirname, 'temp', Date.now().toString())
+
+    // fs.mkdirSync(tempDir, { recursive: true })
+    // let chunkIndex = 0
+
+    stream.on('data', (chunk) => {
+      fileHash.update(chunk)
+      const chunkHash = md5(chunk)
+      chunkMd5s.push(chunkHash)
+      // const chunkPath = path.join(tempDir, `chunk-${chunkIndex}`)
+      // fs.writeFileSync(chunkPath, chunk)
+      // chunkPaths.push(chunkPath)
+      // chunkIndex++
+    })
+
+    stream.on('end', () => {
+      const fileMd5 = fileHash.digest('hex')
+      stream.close()
+      resolve({ fileMd5, chunkMd5s })
+    })
+
+    stream.on('error', (err) => {
+      // fs.rmSync(tempDir, { recursive: true, force: true })
+      reject(err)
+    })
+  })
 }

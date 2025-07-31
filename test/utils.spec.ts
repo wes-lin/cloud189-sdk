@@ -62,7 +62,7 @@ describe('Crypto Utility Functions', () => {
       const testData = 'test'
       const encrypted = rsaEncrypt(publicKey, testData)
 
-      expect(encrypted).to.match(/^[0-9A-F]+$/)
+      expect(encrypted).to.match(/^[0-9a-f]+$/)
     })
 
     it('should handle empty string input', () => {

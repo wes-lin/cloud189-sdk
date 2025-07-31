@@ -42,9 +42,9 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     // console.log(res1)
 
     const res2 = await Promise.all([
-      client.upload({
+      client.fastUpload({
         parentFolderId: '423161205149947211',
-        filePath: 'd:\\wechat\\Untitled-1.mongodb',
+        filePath: '.temp/random_1753944644.txt',
         familyId: 735500198
       })
     ])
