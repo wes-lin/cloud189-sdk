@@ -17,13 +17,14 @@ import {
   MediaType,
   OrderByType,
   FileListResponse,
-  CreateFamilyIdFolderReuest,
   RsaKeyResponse,
   RsaKey,
   UploadInitResponse,
   UploadCommitResponse,
   UploadPartsInfoResponse,
-  MultiUploadUrlsResponse
+  MultiUploadUrlsResponse,
+  CreateFolderReuest,
+  RenameFolderReuest
 } from './types'
 import { logger } from './log'
 import {
@@ -551,40 +552,100 @@ export class CloudClient {
   }
 
   /**
-   * 获取家庭文件列表
+   * 获取文件列表
    * @param pageQuery
    * @returns
    */
-  getFamilyListFiles(pageQuery: PageQuery): Promise<FileListResponse> {
+  getListFiles(pageQuery?: PageQuery, familyId?: number): Promise<FileListResponse> {
     const defaultQuery = {
       pageNum: 1,
       pageSize: 60,
       mediaType: MediaType.ALL.toString(),
       orderBy: OrderByType.LAST_OP_TIME.toString(),
       descending: true,
-      familyId: 0,
       folderId: '',
       iconOption: 5
     }
-    const query = Object.assign(defaultQuery, pageQuery)
-    return this.request
-      .get(`${API_URL}/open/family/file/listFiles.action`, {
-        searchParams: query
-      })
-      .json()
+    const query = {
+      ...defaultQuery,
+      ...pageQuery
+    }
+    if (familyId) {
+      return this.request
+        .get(`${API_URL}/open/family/file/listFiles.action`, {
+          searchParams: {
+            ...query,
+            familyId
+          }
+        })
+        .json()
+    } else {
+      return this.request
+        .get(`${API_URL}/open/file/listFiles.action`, {
+          searchParams: { ...query }
+        })
+        .json()
+    }
   }
 
   /**
-   * 创建家庭文件夹
+   * 创建文件夹
    * @param folderReuest
    * @returns
    */
-  createFamilyFolder(folderReuest: CreateFamilyIdFolderReuest) {
-    return this.request
-      .post(`${API_URL}/open/family/file/createFolder.action`, {
-        form: folderReuest
-      })
-      .json()
+  createFolder(folderReuest: CreateFolderReuest): Promise<{
+    id: string
+    name: string
+    parentId: number
+  }> {
+    if (folderReuest.familyId) {
+      return this.request
+        .post(`${API_URL}/open/family/file/createFolder.action`, {
+          form: {
+            folderName: folderReuest.folderName,
+            parentId: folderReuest.parentFolderId,
+            familyId: folderReuest.familyId
+          }
+        })
+        .json()
+    } else {
+      return this.request
+        .post(`${API_URL}/open/file/createFolder.action`, {
+          form: {
+            folderName: folderReuest.folderName,
+            parentFolderId: folderReuest.parentFolderId
+          }
+        })
+        .json()
+    }
+  }
+
+  /**
+   * 重命名文件夹
+   * @param folderReuest
+   * @returns
+   */
+  renameFolder(folderReuest: RenameFolderReuest) {
+    if (folderReuest.familyId) {
+      return this.request
+        .post(`${API_URL}/open/family/file/renameFolder.action`, {
+          form: {
+            destFolderName: folderReuest.folderName,
+            folderId: folderReuest.folderId,
+            familyId: folderReuest.familyId
+          }
+        })
+        .json()
+    } else {
+      return this.request
+        .post(`${API_URL}/open/file/renameFolder.action`, {
+          form: {
+            destFolderName: folderReuest.folderName,
+            folderId: folderReuest.folderId
+          }
+        })
+        .json()
+    }
   }
 
   async initMultiUpload(

@@ -27,41 +27,60 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   client.familyUserSign(735500198),
     //   client.familyUserSign(735500198)
     // ])
-
-    // const res = await client
-    //   .createFamilyFolder({
-    //     parentId: 5146334744064314,
-    //     folderName: '新建文件夹1',
-    //     familyId: 735500198
-    //   })
-    //   .json()
-    // console.log(res)
-    // const res1 = await client.getFamilyListFiles({
-    //   familyId: 735500198
-    // })
-    // console.log(res1)
-    const res2 = await Promise.all([
-      client.upload({
-        parentFolderId: '423161205149947211',
-        filePath: '.temp/random_1753972005.txt',
-        familyId: 735500198
+    const familyId = 735500198
+    const res = await Promise.all([
+      client.createFolder({
+        parentFolderId: '5146334744064314',
+        folderName: '新建文件夹',
+        familyId
       }),
-      // client.upload({
-      //   parentFolderId: '423161205149947211',
-      //   filePath: '.temp/random_1753972071.txt',
-      //   familyId: 735500198
-      // }),
-      // client.upload({
-      //   parentFolderId: '325551204724717311',
-      //   filePath: '.temp/random_1753972005.txt'
-      // })
-      client.upload({
-        parentFolderId: '223771204727864020',
-        filePath: '.temp/random_1753972071.txt',
-        familyId: 0
+      client.createFolder({
+        parentFolderId: '-11',
+        folderName: '新建文件夹'
+      })
+    ])
+    console.log(res)
+    const res2 = await Promise.all([
+      client.renameFolder({
+        folderId: res[0].id,
+        folderName: res[0].name + '0001',
+        familyId
+      }),
+      client.renameFolder({
+        folderId: res[1].id,
+        folderName: res[1].name + '0002'
       })
     ])
     console.log(res2)
+    // const res1 = await Promise.all([
+    //   client.getListFiles(undefined, 735500198),
+    //   client.getListFiles({
+    //     folderId: -11
+    //   })
+    // ])
+    // console.log(res1)
+    // const res2 = await Promise.all([
+    //   client.upload({
+    //     parentFolderId: '423161205149947211',
+    //     filePath: '.temp/random_1753972005.txt',
+    //     familyId: 735500198
+    //   }),
+    // client.upload({
+    //   parentFolderId: '423161205149947211',
+    //   filePath: '.temp/random_1753972071.txt',
+    //   familyId: 735500198
+    // }),
+    // client.upload({
+    //   parentFolderId: '325551204724717311',
+    //   filePath: '.temp/random_1753972005.txt'
+    // })
+    // client.upload({
+    //   parentFolderId: '223771204727864020',
+    //   filePath: '.temp/random_1753972071.txt',
+    //   familyId: 0
+    // })
+    // ])
+    // console.log(res2)
   } catch (e) {
     console.error(e)
   }

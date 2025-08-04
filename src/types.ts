@@ -106,10 +106,6 @@ export interface PageQuery {
    */
   mediaType?: MediaType
   /**
-   * 家庭id
-   */
-  familyId: number
-  /**
    * 文件夹Id
    */
   folderId?: number
@@ -255,13 +251,19 @@ export interface FolderItem {
 }
 
 /**
- * 创建家庭文件夹
+ * 创建文件夹
  * @public
  */
-export interface CreateFamilyIdFolderReuest {
-  parentId: number
+export interface CreateFolderReuest {
+  parentFolderId: string
   folderName: string
-  familyId: number
+  familyId?: number
+}
+
+export interface RenameFolderReuest {
+  folderId: string
+  folderName: string
+  familyId?: number
 }
 
 export interface RsaKeyResponse extends RsaKey {
