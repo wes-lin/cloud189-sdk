@@ -28,14 +28,7 @@ import {
   PartNumberKey
 } from './types'
 import { logger } from './log'
-import {
-  asyncPool,
-  calculateFileAndChunkMD5,
-  hexToBase64,
-  md5,
-  partSize,
-  rsaEncrypt
-} from './util'
+import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize, rsaEncrypt } from './util'
 import {
   WEB_URL,
   API_URL,
@@ -702,7 +695,7 @@ export class CloudClient {
         })
         .on('uploadProgress', (progress) => {
           if (callbacks.onProgress) {
-            callbacks.onProgress(progress.transferred / progress.total)
+            callbacks.onProgress((progress.transferred * 100) / progress.total)
           }
         })
     } catch (e) {
@@ -805,7 +798,7 @@ export class CloudClient {
         const progressMap: {
           [key: PartNumberKey]: number
         } = {}
-        await asyncPool(10, [...Array(chunkCount).keys()], async (i) => {
+        await asyncPool(5, [...Array(chunkCount).keys()], async (i) => {
           const partNumber = i + 1
           const position = i * sliceSize
           const length = Math.min(sliceSize, fileSize - position)

@@ -1,4 +1,6 @@
 import { CloudClient, FileTokenStore, logger } from '../src/index'
+import fs from 'fs'
+import path from 'path'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 ;(async () => {
@@ -27,10 +29,10 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   client.familyUserSign(735500198),
     //   client.familyUserSign(735500198)
     // ])
-    const familyId = 735500198
+    const { familyId } = familyInfoResp[0]
     const res = await Promise.all([
       client.createFolder({
-        parentFolderId: '5146334744064314',
+        parentFolderId: '',
         folderName: '新建文件夹',
         familyId
       }),
@@ -40,6 +42,8 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
       })
     ])
     console.log(res)
+    const familyIdFolderId = res[0].id
+    const personFolderId = res[1].id
     // const res2 = await Promise.all([
     //   client.renameFolder({
     //     folderId: res[0].id,
@@ -92,12 +96,17 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
           }
         }
       )
-    const res2 = await Promise.all([
-      uploadFamilyFile('5146334744064314', '.temp/random_1754376896.txt', 735500198),
-      uploadFamilyFile('5146334744064314', '.temp/random_1754376897.txt', 735500198),
-      uploadPersonFile('124581206349139194', '.temp/random_1754376896.txt'),
-      uploadPersonFile('124581206349139194', '.temp/random_1754376897.txt')
-    ])
+    const tempdDir = '.temp'
+    const files = fs.readdirSync(tempdDir)
+    const txtFiles = files.filter((file) => path.extname(file).toLowerCase() === '.txt')
+    const uploadTasks = txtFiles.map((file, index) => {
+      if (index > 1) {
+        return uploadPersonFile(personFolderId, path.join(tempdDir, file))
+      } else {
+        return uploadFamilyFile(familyIdFolderId, path.join(tempdDir, file), familyId)
+      }
+    })
+    const res2 = await Promise.all(uploadTasks)
     console.log(res2)
   } catch (e) {
     console.error(e)
