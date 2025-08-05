@@ -1,4 +1,3 @@
-import url from 'url'
 import fs from 'fs'
 import path from 'path'
 import got, { Got } from 'got'
@@ -24,18 +23,17 @@ import {
   UploadPartsInfoResponse,
   MultiUploadUrlsResponse,
   CreateFolderReuest,
-  RenameFolderReuest
+  RenameFolderReuest,
+  UploadCallbacks,
+  PartNumberKey
 } from './types'
 import { logger } from './log'
 import {
-  aesECBEncrypt,
+  asyncPool,
   calculateFileAndChunkMD5,
-  getSignature,
   hexToBase64,
-  hmacSha1,
   md5,
   partSize,
-  randomString,
   rsaEncrypt
 } from './util'
 import {
@@ -52,6 +50,7 @@ import {
 } from './const'
 import { Store, MemoryStore } from './store'
 import { checkError } from './error'
+import { signatureAccesstoken, signatureAppKey, signatureUpload } from './signature'
 
 const config = {
   clientId: '538135150693412',
@@ -124,9 +123,8 @@ export class CloudAuthClient {
   }
 
   #builLoginForm = (encrypt, appConf: CacheQuery, username: string, password: string) => {
-    const keyData = `-----BEGIN PUBLIC KEY-----\n${encrypt.pubKey}\n-----END PUBLIC KEY-----`
-    const usernameEncrypt = rsaEncrypt(keyData, username)
-    const passwordEncrypt = rsaEncrypt(keyData, password)
+    const usernameEncrypt = rsaEncrypt(encrypt.pubKey, username)
+    const passwordEncrypt = rsaEncrypt(encrypt.pubKey, password)
     const data = {
       appKey: AppID,
       accountType: AccountType,
@@ -280,62 +278,20 @@ export class CloudClient {
       hooks: {
         beforeRequest: [
           async (options) => {
-            const time = String(Date.now())
-            const { query } = url.parse(options.url.toString(), true)
             if (options.url.href.includes(API_URL)) {
               const accessToken = await this.getAccessToken()
-              const signature = getSignature({
-                ...(options.method === 'GET' ? query : options.json || options.form),
-                Timestamp: time,
-                AccessToken: accessToken
-              })
-              options.headers['Sign-Type'] = '1'
-              options.headers['Signature'] = signature
-              options.headers['Timestamp'] = time
-              options.headers['Accesstoken'] = accessToken
+              signatureAccesstoken(options, accessToken)
             } else if (options.url.href.includes(WEB_URL)) {
               if (options.url.href.includes('/open')) {
                 const appkey = '600100422'
-                const signature = getSignature({
-                  ...(options.method === 'GET' ? query : options.json || options.form),
-                  Timestamp: time,
-                  AppKey: appkey
-                })
-                options.headers['Sign-Type'] = '1'
-                options.headers['Signature'] = signature
-                options.headers['Timestamp'] = time
-                options.headers['AppKey'] = appkey
+                signatureAppKey(options, appkey)
               }
               const sessionKey = await this.getSessionKey()
               options.url.searchParams.set('sessionKey', sessionKey)
             } else if (options.url.href.includes(UPLOAD_URL)) {
               const sessionKey = await this.getSessionKey()
               const rsaKey = await this.generateRsaKey()
-              const requestID = randomString('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx')
-              const uuid = randomString('xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx').slice(
-                0,
-                (16 + 16 * Math.random()) | 0
-              )
-              logger.debug(`upload query: ${JSON.stringify(query)}`)
-              const params = aesECBEncrypt(query, uuid.substring(0, 16))
-              const data = {
-                SessionKey: sessionKey,
-                Operate: 'GET',
-                RequestURI: options.url.pathname,
-                Date: time,
-                params
-              }
-              const keyData = `-----BEGIN PUBLIC KEY-----\n${rsaKey.pubKey}\n-----END PUBLIC KEY-----`
-              const encryptionText = rsaEncrypt(keyData, uuid, 'base64')
-              options.headers['X-Request-Date'] = time
-              options.headers['X-Request-ID'] = requestID
-              options.headers['SessionKey'] = sessionKey
-              options.headers['EncryptionText'] = encryptionText
-              options.headers['PkId'] = rsaKey.pkId
-              options.headers['Signature'] = hmacSha1(data, uuid)
-              options.url.search = ''
-              options.url.hash = ''
-              options.url.searchParams.set('params', params)
+              signatureUpload(options, rsaKey, sessionKey)
             }
           }
         ],
@@ -714,7 +670,10 @@ export class CloudClient {
       .json<UploadInitResponse>()
   }
 
-  async #parentUpload({ partNumber, md5, buffer, uploadFileId }) {
+  async #partUpload(
+    { partNumber, md5, buffer, uploadFileId, familyId },
+    callbacks: UploadCallbacks = {}
+  ) {
     const partInfo = `${partNumber}-${hexToBase64(md5)}`
     logger.debug(`upload part: ${partNumber}`)
     const multiUploadUrParams = {
@@ -722,7 +681,7 @@ export class CloudClient {
       uploadFileId
     }
     const urls = await this.request
-      .get(`${UPLOAD_URL}/family/getMultiUploadUrls`, {
+      .get(`${UPLOAD_URL}/${familyId ? 'family' : 'person'}/getMultiUploadUrls`, {
         searchParams: multiUploadUrParams
       })
       .json<MultiUploadUrlsResponse>()
@@ -735,24 +694,32 @@ export class CloudClient {
     }, {})
     logger.debug(`Upload URL: ${requestURL}`)
     logger.debug(`Upload Headers: ${JSON.stringify(headers)}`)
-    const res = await got.put(requestURL, {
-      headers,
-      body: buffer
-    })
+    try {
+      await got
+        .put(requestURL, {
+          headers,
+          body: buffer
+        })
+        .on('uploadProgress', (progress) => {
+          if (callbacks.onProgress) {
+            callbacks.onProgress(progress.transferred / progress.total)
+          }
+        })
+    } catch (e) {
+      if (callbacks.onError) {
+        callbacks.onError(e)
+      }
+      throw e
+    }
   }
 
   /**
    * 单个小文件上传
    */
-  async #singleUpload({
-    parentFolderId,
-    filePath,
-    fileName,
-    fileSize,
-    fileMd5,
-    sliceSize,
-    familyId
-  }) {
+  async #singleUpload(
+    { parentFolderId, filePath, fileName, fileSize, fileMd5, sliceSize, familyId },
+    callbacks: UploadCallbacks = {}
+  ) {
     const sliceMd5 = fileMd5
     const initParams = {
       parentFolderId,
@@ -762,45 +729,59 @@ export class CloudClient {
       fileMd5,
       sliceMd5
     }
-    // md5校验
-    const res = await this.initMultiUpload(initParams, familyId)
-    const { uploadFileId, fileDataExists } = res.data
-    if (!fileDataExists) {
-      const fd = await fs.promises.open(filePath, 'r')
-      const buffer = Buffer.alloc(fileSize)
-      await fd.read(buffer, 0, fileSize)
-      await this.#parentUpload({
-        partNumber: 1,
-        md5: fileMd5,
-        buffer,
-        uploadFileId
-      })
-    } else {
-      logger.debug(`单文件 ${filePath} 秒传: ${uploadFileId}`)
+    try {
+      // md5校验
+      const res = await this.initMultiUpload(initParams, familyId)
+      const { uploadFileId, fileDataExists } = res.data
+      if (!fileDataExists) {
+        const fd = await fs.promises.open(filePath, 'r')
+        const buffer = Buffer.alloc(fileSize)
+        await fd.read(buffer, 0, fileSize)
+        await this.#partUpload(
+          {
+            partNumber: 1,
+            md5: fileMd5,
+            buffer,
+            uploadFileId,
+            familyId: ''
+          },
+          {
+            onProgress: callbacks.onProgress,
+            onError: callbacks.onError
+          }
+        )
+      } else {
+        logger.debug(`单文件 ${filePath} 秒传: ${uploadFileId}`)
+        if (callbacks.onProgress) {
+          callbacks.onProgress(100) // 秒传直接显示100%
+        }
+      }
+      const commitResult = await this.commitMultiUpload(
+        {
+          fileMd5,
+          sliceMd5,
+          uploadFileId
+        },
+        familyId
+      )
+      if (callbacks.onComplete) {
+        callbacks.onComplete(commitResult)
+      }
+    } catch (e) {
+      if (callbacks.onError) {
+        callbacks.onError(e)
+      }
+      throw e
     }
-    return this.commitMultiUpload(
-      {
-        fileMd5,
-        sliceMd5,
-        uploadFileId
-      },
-      familyId
-    )
   }
 
   /**
    * 大文件分块上传
    */
-  async #multiUpload({
-    parentFolderId,
-    filePath,
-    fileName,
-    fileSize,
-    fileMd5,
-    sliceSize,
-    chunkMd5s,
-    familyId
-  }) {
+  async #multiUpload(
+    { parentFolderId, filePath, fileName, fileSize, fileMd5, sliceSize, chunkMd5s, familyId },
+    callbacks: UploadCallbacks = {}
+  ) {
     const sliceMd5 = md5(chunkMd5s.join('\n'))
     const initParams = {
       parentFolderId,
@@ -808,43 +789,75 @@ export class CloudClient {
       fileSize,
       sliceSize
     }
-    const res = await this.initMultiUpload(initParams, familyId)
-    const { uploadFileId } = res.data
-    const checkTransSecondParams = {
-      fileMd5,
-      sliceMd5,
-      uploadFileId
-    }
-    // md5校验
-    const checkRes = await this.checkTransSecond(checkTransSecondParams, familyId)
-    if (!checkRes.data.fileDataExists) {
-      const fd = await fs.promises.open(filePath, 'r')
-      const chunkCount = chunkMd5s.length
-      for (let i = 0; i < chunkCount; i++) {
-        const partNumber = i + 1
-        const position = i * sliceSize
-        const length = Math.min(sliceSize, fileSize - position)
-        const buffer = Buffer.alloc(length)
-        await fd.read(buffer, 0, length, position)
-        await this.#parentUpload({
-          partNumber: partNumber,
-          md5: chunkMd5s[i],
-          buffer,
-          uploadFileId
-        })
-      }
-    } else {
-      logger.debug(`多块文件 ${filePath} 秒传: ${uploadFileId}`)
-    }
-    return this.commitMultiUpload(
-      {
+    try {
+      const res = await this.initMultiUpload(initParams, familyId)
+      const { uploadFileId } = res.data
+      const checkTransSecondParams = {
         fileMd5,
         sliceMd5,
-        uploadFileId,
-        lazyCheck: 1
-      },
-      familyId
-    )
+        uploadFileId
+      }
+      // md5校验
+      const checkRes = await this.checkTransSecond(checkTransSecondParams, familyId)
+      if (!checkRes.data.fileDataExists) {
+        const fd = await fs.promises.open(filePath, 'r')
+        const chunkCount = chunkMd5s.length
+        const progressMap: {
+          [key: PartNumberKey]: number
+        } = {}
+        await asyncPool(10, [...Array(chunkCount).keys()], async (i) => {
+          const partNumber = i + 1
+          const position = i * sliceSize
+          const length = Math.min(sliceSize, fileSize - position)
+          const buffer = Buffer.alloc(length)
+          await fd.read(buffer, 0, length, position)
+          await this.#partUpload(
+            {
+              partNumber: partNumber,
+              md5: chunkMd5s[i],
+              buffer,
+              uploadFileId,
+              familyId
+            },
+            {
+              onProgress: (chunkProgress) => {
+                if (callbacks.onProgress) {
+                  // 计算整体进度
+                  progressMap[`partNumber_${partNumber}`] = chunkProgress
+                  const totalProgress =
+                    Object.values(progressMap).reduce((sum, p) => sum + p, 0) / chunkCount
+                  callbacks.onProgress(totalProgress)
+                }
+              },
+              onError: callbacks.onError
+            }
+          )
+        })
+      } else {
+        logger.debug(`多块文件 ${filePath} 秒传: ${uploadFileId}`)
+        if (callbacks.onProgress) {
+          callbacks.onProgress(100) // 秒传直接显示100%
+        }
+      }
+      const commitResult = await this.commitMultiUpload(
+        {
+          fileMd5,
+          sliceMd5,
+          uploadFileId,
+          lazyCheck: 1
+        },
+        familyId
+      )
+      if (callbacks.onComplete) {
+        callbacks.onComplete(commitResult)
+      }
+      return commitResult
+    } catch (e) {
+      if (callbacks.onError) {
+        callbacks.onError(e)
+      }
+      throw e
+    }
   }
 
   /**
@@ -852,33 +865,42 @@ export class CloudClient {
    * @param param
    * @returns
    */
-  async upload(param: { parentFolderId: string; filePath: string; familyId?: number }) {
+  async upload(
+    param: { parentFolderId: string; filePath: string; familyId?: number },
+    callbacks: UploadCallbacks = {}
+  ) {
     const { filePath, parentFolderId, familyId } = param
     const { size } = await fs.promises.stat(filePath)
     const fileName = encodeURIComponent(path.basename(filePath))
     const sliceSize = partSize(size)
     const { fileMd5, chunkMd5s } = await calculateFileAndChunkMD5(filePath, sliceSize)
     if (chunkMd5s.length === 1) {
-      return this.#singleUpload({
-        parentFolderId,
-        filePath,
-        fileName,
-        fileSize: size,
-        sliceSize,
-        fileMd5,
-        familyId
-      })
+      return this.#singleUpload(
+        {
+          parentFolderId,
+          filePath,
+          fileName,
+          fileSize: size,
+          sliceSize,
+          fileMd5,
+          familyId
+        },
+        callbacks
+      )
     } else {
-      return this.#multiUpload({
-        parentFolderId,
-        filePath,
-        fileName,
-        fileSize: size,
-        sliceSize,
-        fileMd5,
-        chunkMd5s,
-        familyId
-      })
+      return this.#multiUpload(
+        {
+          parentFolderId,
+          filePath,
+          fileName,
+          fileSize: size,
+          sliceSize,
+          fileMd5,
+          chunkMd5s,
+          familyId
+        },
+        callbacks
+      )
     }
   }
 }

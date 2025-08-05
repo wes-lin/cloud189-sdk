@@ -1,6 +1,5 @@
 import crypto, { BinaryToTextEncoding } from 'crypto'
 import fs from 'fs'
-import path from 'path'
 
 export const sortParameter = (data): string => {
   if (!data) {
@@ -21,9 +20,10 @@ export const rsaEncrypt = (
   origData: string,
   encoding: BinaryToTextEncoding = 'hex'
 ) => {
+  const key = `-----BEGIN PUBLIC KEY-----\n${publicKey}\n-----END PUBLIC KEY-----`
   const encryptedData = crypto.publicEncrypt(
     {
-      key: publicKey,
+      key,
       padding: crypto.constants.RSA_PKCS1_PADDING
     },
     Buffer.from(origData)
@@ -113,4 +113,23 @@ export const calculateFileAndChunkMD5 = (
       reject(err)
     })
   })
+}
+
+export const asyncPool = async (poolLimit, array, iteratorFn)=> {
+  const ret = []; // 存储所有异步任务
+  const executing = []; // 存储正在执行的异步任务
+  
+  for (const item of array) {
+    const p = Promise.resolve().then(() => iteratorFn(item, array));
+    ret.push(p);
+    
+    if (poolLimit <= array.length) {
+      const e = p.then(() => executing.splice(executing.indexOf(e), 1));
+      executing.push(e);
+      if (executing.length >= poolLimit) {
+        await Promise.race(executing);
+      }
+    }
+  }
+  return Promise.all(ret);
 }

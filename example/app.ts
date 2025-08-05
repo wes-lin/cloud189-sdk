@@ -40,18 +40,18 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
       })
     ])
     console.log(res)
-    const res2 = await Promise.all([
-      client.renameFolder({
-        folderId: res[0].id,
-        folderName: res[0].name + '0001',
-        familyId
-      }),
-      client.renameFolder({
-        folderId: res[1].id,
-        folderName: res[1].name + '0002'
-      })
-    ])
-    console.log(res2)
+    // const res2 = await Promise.all([
+    //   client.renameFolder({
+    //     folderId: res[0].id,
+    //     folderName: res[0].name + '0001',
+    //     familyId
+    //   }),
+    //   client.renameFolder({
+    //     folderId: res[1].id,
+    //     folderName: res[1].name + '0002'
+    //   })
+    // ])
+    // console.log(res2)
     // const res1 = await Promise.all([
     //   client.getListFiles(undefined, 735500198),
     //   client.getListFiles({
@@ -59,28 +59,46 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   })
     // ])
     // console.log(res1)
-    // const res2 = await Promise.all([
-    //   client.upload({
-    //     parentFolderId: '423161205149947211',
-    //     filePath: '.temp/random_1753972005.txt',
-    //     familyId: 735500198
-    //   }),
-    // client.upload({
-    //   parentFolderId: '423161205149947211',
-    //   filePath: '.temp/random_1753972071.txt',
-    //   familyId: 735500198
-    // }),
-    // client.upload({
-    //   parentFolderId: '325551204724717311',
-    //   filePath: '.temp/random_1753972005.txt'
-    // })
-    // client.upload({
-    //   parentFolderId: '223771204727864020',
-    //   filePath: '.temp/random_1753972071.txt',
-    //   familyId: 0
-    // })
-    // ])
-    // console.log(res2)
+    const uploadFamilyFile = (parentFolderId: string, filePath: string, familyId: number) =>
+      client.upload(
+        {
+          parentFolderId,
+          filePath,
+          familyId
+        },
+        {
+          onProgress: (process) => {
+            console.log(
+              `familyId: ${familyId}  uploadFamily: ${filePath} ⬆️  transferred: ${process}`
+            )
+          },
+          onComplete(response) {
+            console.log(`uploadFamily ${filePath} complete`)
+          }
+        }
+      )
+    const uploadPersonFile = (parentFolderId: string, filePath: string) =>
+      client.upload(
+        {
+          parentFolderId,
+          filePath
+        },
+        {
+          onProgress: (process) => {
+            console.log(`uploadPerson: ${filePath} ⬆️  transferred: ${process}`)
+          },
+          onComplete(response) {
+            console.log(`uploadPerson ${filePath} complete`)
+          }
+        }
+      )
+    const res2 = await Promise.all([
+      uploadFamilyFile('5146334744064314', '.temp/random_1754376896.txt', 735500198),
+      uploadFamilyFile('5146334744064314', '.temp/random_1754376897.txt', 735500198),
+      uploadPersonFile('124581206349139194', '.temp/random_1754376896.txt'),
+      uploadPersonFile('124581206349139194', '.temp/random_1754376897.txt')
+    ])
+    console.log(res2)
   } catch (e) {
     console.error(e)
   }

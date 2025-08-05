@@ -430,7 +430,7 @@ export interface UploadPartsInfoResponse extends UploadResponse {
   }
 }
 
-type PartNumberKey = `partNumber_${number}`
+export type PartNumberKey = `partNumber_${number}`
 
 export interface MultiUploadUrlsResponse extends UploadResponse {
   uploadUrls: {
@@ -439,4 +439,10 @@ export interface MultiUploadUrlsResponse extends UploadResponse {
       requestHeader: string
     }
   }
+}
+
+export interface UploadCallbacks {
+  onProgress?: (progress: number) => void // 上传进度回调 (0-100)
+  onComplete?: (response: any) => void // 上传完成回调
+  onError?: (error: Error) => void // 上传失败回调
 }
