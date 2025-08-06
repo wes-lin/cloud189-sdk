@@ -43,7 +43,10 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     ])
     console.log(res)
     const familyIdFolderId = res[0].id
+    const familyIdParentFolderId = res[1].parentId
     const personFolderId = res[1].id
+    const personFolderName = res[1].name
+    const personParentFolderId = res[1].parentId
     // const res2 = await Promise.all([
     //   client.renameFolder({
     //     folderId: res[0].id,
@@ -108,6 +111,40 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     })
     const res2 = await Promise.all(uploadTasks)
     console.log(res2)
+    await delay(10000)
+    const newnParentFolderId = '424591193599555582'
+    await client.createBatchTask({
+      type: 'MOVE',
+      taskInfos: [
+        {
+          fileId: personFolderId,
+          fileName: personFolderName,
+          isFolder: 1
+        }
+      ],
+      targetFolderId: newnParentFolderId
+    })
+    await delay(10000)
+    await client.createBatchTask({
+      type: 'DELETE',
+      taskInfos: [
+        {
+          fileId: personFolderId,
+          isFolder: 1
+        }
+      ]
+    })
+    // await client.createBatchTask({
+    //   type: 'DELETE',
+    //   taskInfos: [
+    //     {
+    //       fileId: familyIdFolderId,
+    //       isFolder: 1,
+    //       srcParentId: familyIdParentFolderId
+    //     }
+    //   ],
+    //   familyId
+    // })
   } catch (e) {
     console.error(e)
   }

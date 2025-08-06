@@ -22,10 +22,11 @@ import {
   UploadCommitResponse,
   UploadPartsInfoResponse,
   MultiUploadUrlsResponse,
-  CreateFolderReuest,
-  RenameFolderReuest,
+  CreateFolderRequest,
   UploadCallbacks,
-  PartNumberKey
+  PartNumberKey,
+  RenameFolderRequest,
+  CreateBatchTaskRequest
 } from './types'
 import { logger } from './log'
 import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize, rsaEncrypt } from './util'
@@ -260,7 +261,7 @@ export class CloudClient {
     this.request = got.extend({
       retry: {
         limit: 2,
-        statusCodes: [408, 413, 429],
+        statusCodes: [408, 413, 429, 511],
         errorCodes: ['ETIMEDOUT', 'ECONNRESET']
       },
       headers: {
@@ -542,18 +543,18 @@ export class CloudClient {
    * @param folderReuest
    * @returns
    */
-  createFolder(folderReuest: CreateFolderReuest): Promise<{
+  createFolder(createFolderRequest: CreateFolderRequest): Promise<{
     id: string
     name: string
     parentId: number
   }> {
-    if (folderReuest.familyId) {
+    if (createFolderRequest.familyId) {
       return this.request
         .post(`${API_URL}/open/family/file/createFolder.action`, {
           form: {
-            folderName: folderReuest.folderName,
-            parentId: folderReuest.parentFolderId,
-            familyId: folderReuest.familyId
+            folderName: createFolderRequest.folderName,
+            parentId: createFolderRequest.parentFolderId,
+            familyId: createFolderRequest.familyId
           }
         })
         .json()
@@ -561,8 +562,8 @@ export class CloudClient {
       return this.request
         .post(`${API_URL}/open/file/createFolder.action`, {
           form: {
-            folderName: folderReuest.folderName,
-            parentFolderId: folderReuest.parentFolderId
+            folderName: createFolderRequest.folderName,
+            parentFolderId: createFolderRequest.parentFolderId
           }
         })
         .json()
@@ -574,14 +575,14 @@ export class CloudClient {
    * @param folderReuest
    * @returns
    */
-  renameFolder(folderReuest: RenameFolderReuest) {
-    if (folderReuest.familyId) {
+  renameFolder(folderRequest: RenameFolderRequest) {
+    if (folderRequest.familyId) {
       return this.request
         .post(`${API_URL}/open/family/file/renameFolder.action`, {
           form: {
-            destFolderName: folderReuest.folderName,
-            folderId: folderReuest.folderId,
-            familyId: folderReuest.familyId
+            destFolderName: folderRequest.folderName,
+            folderId: folderRequest.folderId,
+            familyId: folderRequest.familyId
           }
         })
         .json()
@@ -589,8 +590,8 @@ export class CloudClient {
       return this.request
         .post(`${API_URL}/open/file/renameFolder.action`, {
           form: {
-            destFolderName: folderReuest.folderName,
-            folderId: folderReuest.folderId
+            destFolderName: folderRequest.folderName,
+            folderId: folderRequest.folderId
           }
         })
         .json()
@@ -894,6 +895,70 @@ export class CloudClient {
         },
         callbacks
       )
+    }
+  }
+
+  async checkTaskStatus(
+    type: string,
+    taskId: string,
+    maxAttempts = 120,
+    interval = 500
+  ): Promise<number[]> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const { taskStatus, successedFileIdList } = await this.request
+          .post(`${API_URL}/open/batch/checkBatchTask.action`, {
+            form: { type, taskId }
+          })
+          .json<{ taskStatus: number; successedFileIdList: number[] }>()
+        if (taskStatus === -1) {
+          logger.error('任务异常')
+        }
+        //重名
+        if (taskStatus === 2) {
+          logger.error('文件重名')
+          return []
+        }
+        //成功
+        if (taskStatus === 4) {
+          return successedFileIdList
+        }
+      } catch (e) {
+        logger.error(`Check task status attempt ${attempt + 1} failed:` + e)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, interval))
+    }
+    return []
+  }
+
+  async createBatchTask(createBatchTaskRequest: CreateBatchTaskRequest) {
+    let form = {
+      ...(createBatchTaskRequest.familyId
+        ? {
+            familyId: createBatchTaskRequest.familyId
+          }
+        : {}),
+      ...(createBatchTaskRequest.targetFolderId
+        ? {
+            targetFolderId: createBatchTaskRequest.targetFolderId
+          }
+        : {}),
+      type: createBatchTaskRequest.type,
+      taskInfos: JSON.stringify(createBatchTaskRequest.taskInfos)
+    }
+    logger.debug('createBatchTask:' + JSON.stringify(form))
+    try {
+      const { taskId } = await this.request
+        .post(`${API_URL}/open/batch/createBatchTask.action`, {
+          form
+        })
+        .json<{ taskId: string }>()
+
+      return await this.checkTaskStatus(createBatchTaskRequest.type, taskId)
+    } catch (error) {
+      logger.error('Batch task creation failed:' + error)
+      throw error
     }
   }
 }

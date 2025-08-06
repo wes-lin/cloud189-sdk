@@ -254,13 +254,13 @@ export interface FolderItem {
  * 创建文件夹
  * @public
  */
-export interface CreateFolderReuest {
+export interface CreateFolderRequest {
   parentFolderId: string
   folderName: string
   familyId?: number
 }
 
-export interface RenameFolderReuest {
+export interface RenameFolderRequest {
   folderId: string
   folderName: string
   familyId?: number
@@ -445,4 +445,19 @@ export interface UploadCallbacks {
   onProgress?: (progress: number) => void // 上传进度回调 (0-100)
   onComplete?: (response: any) => void // 上传完成回调
   onError?: (error: Error) => void // 上传失败回调
+}
+
+type TaskType = 'DELETE' | 'MOVE' | 'COPY'
+export interface CreateBatchTaskRequest {
+  type: TaskType
+  taskInfos: [
+    {
+      fileId: string
+      fileName?: string
+      isFolder: number
+      srcParentId?: number
+    }
+  ]
+  targetFolderId?: string
+  familyId?: number
 }

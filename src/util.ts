@@ -115,21 +115,21 @@ export const calculateFileAndChunkMD5 = (
   })
 }
 
-export const asyncPool = async (poolLimit, array, iteratorFn)=> {
-  const ret = []; // 存储所有异步任务
-  const executing = []; // 存储正在执行的异步任务
-  
+export const asyncPool = async (poolLimit, array, iteratorFn) => {
+  const ret = [] // 存储所有异步任务
+  const executing = [] // 存储正在执行的异步任务
+
   for (const item of array) {
-    const p = Promise.resolve().then(() => iteratorFn(item, array));
-    ret.push(p);
-    
+    const p = Promise.resolve().then(() => iteratorFn(item, array))
+    ret.push(p)
+
     if (poolLimit <= array.length) {
-      const e = p.then(() => executing.splice(executing.indexOf(e), 1));
-      executing.push(e);
+      const e = p.then(() => executing.splice(executing.indexOf(e), 1))
+      executing.push(e)
       if (executing.length >= poolLimit) {
-        await Promise.race(executing);
+        await Promise.race(executing)
       }
     }
   }
-  return Promise.all(ret);
+  return Promise.all(ret)
 }
