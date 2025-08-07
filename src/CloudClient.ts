@@ -27,6 +27,7 @@ import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize } from 
 import { WEB_URL, API_URL, UserAgent, UPLOAD_URL } from './const'
 import { signatureAccesstoken, signatureAppKey, signatureUpload } from './signature'
 import { CloudAuthClient } from './CloudAuthClient'
+import { logHook } from './hook'
 
 const config = {
   clientId: '538135150693412',
@@ -79,8 +80,8 @@ export class CloudClient {
           }
         ],
         afterResponse: [
+          logHook,
           async (response, retryWithMergedOptions) => {
-            logger.debug(`url: ${response.url}, response: ${response.body}`)
             if (response.statusCode === 400) {
               const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
                 errorCode: string
@@ -248,7 +249,7 @@ export class CloudClient {
 
   /**
    * 重命名文件夹
-   * @param folderReuest
+   * @param folderRequest
    * @returns
    */
   renameFolder(folderRequest: RenameFolderRequest) {
@@ -438,6 +439,7 @@ export class CloudClient {
       if (callbacks.onComplete) {
         callbacks.onComplete(commitResult)
       }
+      return commitResult
     } catch (e) {
       if (callbacks.onError) {
         callbacks.onError(e)
@@ -639,5 +641,16 @@ export class CloudClient {
       logger.error('Batch task creation failed:' + error)
       throw error
     }
+  }
+
+  getFileDownloadUrl(params: { fileId: string; familyId?: string }) {
+    return this.request(
+      `${API_URL}/open/${params.familyId ? 'family/' : ''}/file/getFileDownloadUrl.action`,
+      {
+        searchParams: params
+      }
+    ).json<{
+      fileDownloadUrl: string
+    }>()
   }
 }

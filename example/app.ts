@@ -26,11 +26,11 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     const { familyInfoResp } = await client.getFamilyList()
     const { familyId } = familyInfoResp[0]
     console.log(familyInfoResp)
-    const familyUserSingRes = await Promise.all([
-      client.familyUserSign(familyId)
-      // client.familyUserSign(735500198)
-    ])
-    console.log(familyUserSingRes)
+    // const familyUserSingRes = await Promise.all([
+    //   client.familyUserSign(familyId)
+    //   // client.familyUserSign(735500198)
+    // ])
+    // console.log(familyUserSingRes)
     const res = await Promise.all([
       client.createFolder({
         parentFolderId: '',
@@ -100,41 +100,41 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
           }
         }
       )
-    const tempdDir = '.temp'
-    const files = fs.readdirSync(tempdDir)
-    const txtFiles = files.filter((file) => path.extname(file).toLowerCase() === '.txt')
-    const uploadTasks = txtFiles.map((file, index) => {
-      if (index > 1) {
-        return uploadPersonFile(personFolderId, path.join(tempdDir, file))
-      } else {
-        return uploadFamilyFile(familyIdFolderId, path.join(tempdDir, file), familyId)
-      }
-    })
-    const res2 = await Promise.all(uploadTasks)
-    console.log(res2)
-    await delay(10000)
-    const newnParentFolderId = '424591193599555582'
-    await client.createBatchTask({
-      type: 'MOVE',
-      taskInfos: [
-        {
-          fileId: personFolderId,
-          fileName: personFolderName,
-          isFolder: 1
-        }
-      ],
-      targetFolderId: newnParentFolderId
-    })
-    await delay(10000)
-    await client.createBatchTask({
-      type: 'DELETE',
-      taskInfos: [
-        {
-          fileId: personFolderId,
-          isFolder: 1
-        }
-      ]
-    })
+    // const tempdDir = '.temp'
+    // const files = fs.readdirSync(tempdDir)
+    // const txtFiles = files.filter((file) => path.extname(file).toLowerCase() === '.txt')
+    // const uploadTasks = txtFiles.map((file, index) => {
+    //   if (index > 1) {
+    //     return uploadPersonFile(personFolderId, path.join(tempdDir, file))
+    //   } else {
+    //     return uploadFamilyFile(familyIdFolderId, path.join(tempdDir, file), familyId)
+    //   }
+    // })
+    // const res2 = await Promise.all(uploadTasks)
+    // console.log(res2)
+    // await delay(10000)
+    // const newnParentFolderId = '424591193599555582'
+    // await client.createBatchTask({
+    //   type: 'MOVE',
+    //   taskInfos: [
+    //     {
+    //       fileId: personFolderId,
+    //       fileName: personFolderName,
+    //       isFolder: 1
+    //     }
+    //   ],
+    //   targetFolderId: newnParentFolderId
+    // })
+    // await delay(10000)
+    // await client.createBatchTask({
+    //   type: 'DELETE',
+    //   taskInfos: [
+    //     {
+    //       fileId: personFolderId,
+    //       isFolder: 1
+    //     }
+    //   ]
+    // })
     // await client.createBatchTask({
     //   type: 'DELETE',
     //   taskInfos: [
@@ -146,6 +146,13 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     //   ],
     //   familyId
     // })
+    await client.getFileDownloadUrl({
+      fileId: '124401206726071968'
+    })
+    await client.getFileDownloadUrl({
+      fileId: '424301206725136670',
+      familyId: '735500198'
+    })
   } catch (e) {
     console.error(e)
   }

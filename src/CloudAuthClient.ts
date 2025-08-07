@@ -12,7 +12,6 @@ import {
   AccountType
 } from './const'
 import { Store, MemoryStore } from './store'
-import { checkError } from './error'
 import {
   RefreshTokenSession,
   TokenSession,
@@ -21,8 +20,8 @@ import {
   ClientSession,
   AccessTokenResponse
 } from './types'
-import { rsaEncrypt } from './util'
-import { signatureAppKey } from './signature'
+import { getSignature, rsaEncrypt } from './util'
+import { logHook, checkErrorHook } from './hook'
 
 interface LoginResponse {
   result: number
@@ -41,7 +40,7 @@ export class CloudAuthClient {
   #sessionKeyPromise: Promise<string>
   #accessTokenPromise: Promise<AccessTokenResponse>
   readonly session: ClientSession
-  readonly request: Got
+  readonly authRequest: Got
 
   constructor(_options: ConfigurationOptions) {
     this.#valid(_options)
@@ -53,29 +52,13 @@ export class CloudAuthClient {
       accessToken: '',
       sessionKey: ''
     }
-    this.request = got.extend({
+    this.authRequest = got.extend({
       headers: {
         'User-Agent': UserAgent,
         Accept: 'application/json;charset=UTF-8'
       },
       hooks: {
-        beforeRequest: [
-          async (options) => {
-            if (options.url.href.startsWith(WEB_URL) && options.url.href.includes('/open')) {
-              const appkey = '600100422'
-              signatureAppKey(options, appkey)
-              const sessionKey = await this.getSessionKey()
-              options.url.searchParams.set('sessionKey', sessionKey)
-            }
-          }
-        ],
-        afterResponse: [
-          async (response, retryWithMergedOptions) => {
-            logger.debug(`url: ${response.requestUrl}, response: ${response.body})}`)
-            checkError(response.body.toString())
-            return response
-          }
-        ]
+        afterResponse: [logHook, checkErrorHook]
       }
     })
   }
@@ -97,11 +80,11 @@ export class CloudAuthClient {
       pre: string
     }
   }> {
-    return this.request.post(`${AUTH_URL}/api/logbox/config/encryptConf.do`).json()
+    return this.authRequest.post(`${AUTH_URL}/api/logbox/config/encryptConf.do`).json()
   }
 
   async getLoginForm(): Promise<CacheQuery> {
-    const res = await this.request
+    const res = await this.authRequest
       .get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
         searchParams: {
           appId: AppID,
@@ -148,7 +131,7 @@ export class CloudAuthClient {
       ...clientSuffix(),
       ...param
     }
-    const res = await this.request
+    const res = await this.authRequest
       .post(`${API_URL}/getSessionForPC.action`, {
         searchParams: params
       })
@@ -171,7 +154,7 @@ export class CloudAuthClient {
       const encrypt = res[0].data
       const appConf = res[1]
       const data = this.#builLoginForm(encrypt, appConf, username, password)
-      const loginRes = await this.request
+      const loginRes = await this.authRequest
         .post(`${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`, {
           headers: {
             Referer: AUTH_URL,
@@ -201,7 +184,7 @@ export class CloudAuthClient {
    */
   async loginBySsoCooike(cookie: string) {
     logger.debug('loginBySsoCooike...')
-    const res = await this.request.get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
+    const res = await this.authRequest.get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
       searchParams: {
         appId: AppID,
         clientType: ClientType,
@@ -209,7 +192,7 @@ export class CloudAuthClient {
         timeStamp: Date.now()
       }
     })
-    const redirect = await this.request(res.url, {
+    const redirect = await this.authRequest(res.url, {
       headers: {
         Cookie: `SSON=${cookie}`
       }
@@ -221,7 +204,7 @@ export class CloudAuthClient {
    * 刷新token
    */
   refreshToken(refreshToken: string): Promise<RefreshTokenSession> {
-    return this.request
+    return this.authRequest
       .post(`${AUTH_URL}/api/oauth2/refreshToken.do`, {
         form: {
           clientId: AppID,
@@ -317,8 +300,27 @@ export class CloudAuthClient {
   /**
    * 获取 accessToken
    */
-  #getAccessTokenBySsKey(): Promise<AccessTokenResponse> {
-    return this.request.get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`).json()
+  async #getAccessTokenBySsKey(): Promise<AccessTokenResponse> {
+    const time = String(Date.now())
+    const appkey = '600100422'
+    const signature = getSignature({
+      Timestamp: time,
+      AppKey: appkey
+    })
+    const sessionKey = await this.getSessionKey()
+    return this.authRequest
+      .get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`, {
+        headers: {
+          'Sign-Type': '1',
+          Signature: signature,
+          Timestamp: time,
+          AppKey: appkey
+        },
+        searchParams: {
+          sessionKey
+        }
+      })
+      .json()
   }
 
   /**
