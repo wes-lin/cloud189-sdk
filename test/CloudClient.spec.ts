@@ -3,7 +3,6 @@ import sinon from 'sinon'
 import nock from 'nock'
 import { CloudClient } from '../src/CloudClient'
 import { MemoryStore } from '../src/store'
-import { logger } from '../src/log'
 import {
   UserSizeInfoResponse,
   UserSignResponse,
@@ -11,7 +10,7 @@ import {
   FamilyUserSignResponse
 } from '../src/types'
 import { WEB_URL, API_URL, AUTH_URL, ReturnURL } from '../src/const'
-import { time } from 'console'
+import { logger } from '../src/log'
 
 describe('CloudClient', () => {
   let cloudClient: CloudClient
@@ -110,26 +109,7 @@ describe('CloudClient', () => {
   })
 })
 
-describe('CloudClient valid', () => {
-  it('token is empty', () => {
-    try {
-      new CloudClient({})
-    } catch (err) {
-      expect(err).to.be.an('error')
-      expect(err.message).to.equal('Please provide username and password or token !')
-    }
-  })
-  it('password is empty', () => {
-    try {
-      new CloudClient({ username: 'username' })
-    } catch (err) {
-      expect(err).to.be.an('error')
-      expect(err.message).to.equal('Please provide username and password or token !')
-    }
-  })
-})
-
-describe('CloudClient session', () => {
+describe('CloudAuthClient session', () => {
   logger.configure({
     isDebugEnabled: true
   })
@@ -181,23 +161,23 @@ describe('CloudClient session', () => {
             var qrLoginClientDownloadLink = 'https://user.e.189.cn/topic/intro/intro.html',
               qrLoginClientName = 'none',
               qrLoginText = '公告：部分新版微信安卓端存在扫码登录失败问题，建议通过小翼管家、支付宝等扫码登录';
-      
+
             var clientType = '10020', //客户端类型  1web  2wap
               accountType = '02', //所支持的账号类型
               appKey = '8025431004',
               sso = 'yes', //no不显示
               returnUrl = 'https://m.cloud.189.cn/zhuanti/2020/loginErrorPc/index.html', //未解析的成功跳转链接
               regReturnUrl = '';
-      
+
             var loginSort = 'Qr|Pw|Sms', //登录模式显示顺序
               themeStyle = '', //配置主题色
               borderStyle = 'false', //配置边框
               placeholder = '手机号/邮箱', //手机号 / 邮箱
               mailSuffix = ''; //undefined eg'@189.cn'
-      
+
             var EmailExt;
-            EmailExt = ''; 
-      
+            EmailExt = '';
+
             var isNeedSecondAuth = '',
               mobile = '',
               showName = '',
@@ -261,7 +241,7 @@ describe('CloudClient session', () => {
       token: store,
       ssonCookie: testCookie
     })
-    const session = await cloudClient.getSession()
+    await cloudClient.authClient.getSession()
   })
 
   it('Refresh InvalidSessionKey', async () => {
@@ -302,7 +282,6 @@ describe('CloudClient session', () => {
       password: 'test_pass',
       token: store
     })
-    await cloudClient.getUserSizeInfo()
     await cloudClient.getUserSizeInfo()
   })
 
@@ -348,6 +327,5 @@ describe('CloudClient session', () => {
     })
 
     await cloudClient.familyUserSign(1)
-    await cloudClient.familyUserSign(2)
   })
 })

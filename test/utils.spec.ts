@@ -36,13 +36,13 @@ describe('Crypto Utility Functions', () => {
     // Generate RSA key pair for testing
     const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
       modulusLength: 2048,
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'der' },
       privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
     })
-
+    const publicPem = publicKey.toString('base64')
     it('should encrypt data correctly', () => {
       const testData = 'hello world'
-      const encrypted = rsaEncrypt(publicKey, testData)
+      const encrypted = rsaEncrypt(publicPem, testData)
 
       // Verify encrypted data can be decrypted
       const decrypted = crypto
@@ -60,13 +60,13 @@ describe('Crypto Utility Functions', () => {
 
     it('should return encrypted data in uppercase hex format', () => {
       const testData = 'test'
-      const encrypted = rsaEncrypt(publicKey, testData)
+      const encrypted = rsaEncrypt(publicPem, testData)
 
       expect(encrypted).to.match(/^[0-9a-f]+$/)
     })
 
     it('should handle empty string input', () => {
-      const encrypted = rsaEncrypt(publicKey, '')
+      const encrypted = rsaEncrypt(publicPem, '')
       expect(encrypted).to.be.a('string')
     })
 

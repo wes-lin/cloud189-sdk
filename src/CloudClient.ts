@@ -4,14 +4,9 @@ import got, { Got } from 'got'
 import {
   UserSignResponse,
   UserSizeInfoResponse,
-  AccessTokenResponse,
   FamilyListResponse,
   FamilyUserSignResponse,
   ConfigurationOptions,
-  ClientSession,
-  RefreshTokenSession,
-  TokenSession,
-  CacheQuery,
   PageQuery,
   MediaType,
   OrderByType,
@@ -20,7 +15,6 @@ import {
   RsaKey,
   UploadInitResponse,
   UploadCommitResponse,
-  UploadPartsInfoResponse,
   MultiUploadUrlsResponse,
   CreateFolderRequest,
   UploadCallbacks,
@@ -29,22 +23,10 @@ import {
   CreateBatchTaskRequest
 } from './types'
 import { logger } from './log'
-import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize, rsaEncrypt } from './util'
-import {
-  WEB_URL,
-  API_URL,
-  AUTH_URL,
-  UserAgent,
-  clientSuffix,
-  AppID,
-  ClientType,
-  ReturnURL,
-  AccountType,
-  UPLOAD_URL
-} from './const'
-import { Store, MemoryStore } from './store'
-import { checkError } from './error'
+import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize } from './util'
+import { WEB_URL, API_URL, UserAgent, UPLOAD_URL } from './const'
 import { signatureAccesstoken, signatureAppKey, signatureUpload } from './signature'
+import { CloudAuthClient } from './CloudAuthClient'
 
 const config = {
   clientId: '538135150693412',
@@ -52,216 +34,23 @@ const config = {
   version: '9.0.6'
 }
 
-interface LoginResponse {
-  result: number
-  msg: string
-  toUrl: string
-}
-
-/**
- * @public
- */
-export class CloudAuthClient {
-  readonly request: Got
-
-  constructor() {
-    this.request = got.extend({
-      headers: {
-        'User-Agent': UserAgent,
-        Accept: 'application/json;charset=UTF-8'
-      },
-      hooks: {
-        afterResponse: [
-          async (response, retryWithMergedOptions) => {
-            logger.debug(`url: ${response.requestUrl}, response: ${response.body})}`)
-            checkError(response.body.toString())
-            return response
-          }
-        ]
-      }
-    })
-  }
-
-  /**
-   * 获取加密参数
-   * @returns
-   */
-  getEncrypt(): Promise<{
-    data: {
-      pubKey: string
-      pre: string
-    }
-  }> {
-    return this.request.post(`${AUTH_URL}/api/logbox/config/encryptConf.do`).json()
-  }
-
-  async getLoginForm(): Promise<CacheQuery> {
-    const res = await this.request
-      .get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
-        searchParams: {
-          appId: AppID,
-          clientType: ClientType,
-          returnURL: ReturnURL,
-          timeStamp: Date.now()
-        }
-      })
-      .text()
-    if (res) {
-      const captchaToken = res.match(`'captchaToken' value='(.+?)'`)[1]
-      const lt = res.match(`lt = "(.+?)"`)[1]
-      const paramId = res.match(`paramId = "(.+?)"`)[1]
-      const reqId = res.match(`reqId = "(.+?)"`)[1]
-      return { captchaToken, lt, paramId, reqId }
-    }
-    return null
-  }
-
-  #builLoginForm = (encrypt, appConf: CacheQuery, username: string, password: string) => {
-    const usernameEncrypt = rsaEncrypt(encrypt.pubKey, username)
-    const passwordEncrypt = rsaEncrypt(encrypt.pubKey, password)
-    const data = {
-      appKey: AppID,
-      accountType: AccountType,
-      // mailSuffix: '@189.cn',
-      validateCode: '',
-      captchaToken: appConf.captchaToken,
-      dynamicCheck: 'FALSE',
-      clientType: '1',
-      cb_SaveName: '3',
-      isOauth2: false,
-      returnUrl: ReturnURL,
-      paramId: appConf.paramId,
-      userName: `${encrypt.pre}${usernameEncrypt}`,
-      password: `${encrypt.pre}${passwordEncrypt}`
-    }
-    return data
-  }
-
-  async getSessionForPC(param: { redirectURL?: string; accessToken?: string }) {
-    const params = {
-      appId: AppID,
-      ...clientSuffix(),
-      ...param
-    }
-    const res = await this.request
-      .post(`${API_URL}/getSessionForPC.action`, {
-        searchParams: params
-      })
-      .json<TokenSession>()
-    return res
-  }
-
-  /**
-   * 用户名密码登录
-   * */
-  async loginByPassword(username: string, password: string) {
-    logger.debug('loginByPassword...')
-    try {
-      const res = await Promise.all([
-        //1.获取公钥
-        this.getEncrypt(),
-        //2.获取登录参数
-        this.getLoginForm()
-      ])
-      const encrypt = res[0].data
-      const appConf = res[1]
-      const data = this.#builLoginForm(encrypt, appConf, username, password)
-      const loginRes = await this.request
-        .post(`${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`, {
-          headers: {
-            Referer: AUTH_URL,
-            lt: appConf.lt,
-            REQID: appConf.reqId
-          },
-          form: data
-        })
-        .json<LoginResponse>()
-      return await this.getSessionForPC({ redirectURL: loginRes.toUrl })
-    } catch (e) {
-      logger.error(e)
-      throw e
-    }
-  }
-
-  /**
-   * token登录
-   */
-  async loginByAccessToken(accessToken: string) {
-    logger.debug('loginByAccessToken...')
-    return await this.getSessionForPC({ accessToken })
-  }
-
-  /**
-   * sso登录
-   */
-  async loginBySsoCooike(cookie: string) {
-    logger.debug('loginBySsoCooike...')
-    const res = await this.request.get(`${WEB_URL}/api/portal/unifyLoginForPC.action`, {
-      searchParams: {
-        appId: AppID,
-        clientType: ClientType,
-        returnURL: ReturnURL,
-        timeStamp: Date.now()
-      }
-    })
-    const redirect = await this.request(res.url, {
-      headers: {
-        Cookie: `SSON=${cookie}`
-      }
-    })
-    return await this.getSessionForPC({ redirectURL: redirect.url })
-  }
-
-  /**
-   * 刷新token
-   */
-  refreshToken(refreshToken: string): Promise<RefreshTokenSession> {
-    return this.request
-      .post(`${AUTH_URL}/api/oauth2/refreshToken.do`, {
-        form: {
-          clientId: AppID,
-          refreshToken,
-          grantType: 'refresh_token',
-          format: 'json'
-        }
-      })
-      .json()
-  }
-}
-
 /**
  * 天翼网盘客户端
  * @public
  */
 export class CloudClient {
-  username: string
-  password: string
-  ssonCookie: string
-  tokenStore: Store
   readonly request: Got
   readonly authClient: CloudAuthClient
-  readonly session: ClientSession
   private rsaKey: RsaKey
-  #sessionKeyPromise: Promise<string>
-  #accessTokenPromise: Promise<AccessTokenResponse>
   #generateRsaKeyPromise: Promise<RsaKeyResponse>
 
   constructor(_options: ConfigurationOptions) {
-    this.#valid(_options)
-    this.username = _options.username
-    this.password = _options.password
-    this.ssonCookie = _options.ssonCookie
-    this.tokenStore = _options.token || new MemoryStore()
-    this.authClient = new CloudAuthClient()
-    this.session = {
-      accessToken: '',
-      sessionKey: ''
-    }
+    this.authClient = new CloudAuthClient(_options)
     this.rsaKey = null
     this.request = got.extend({
       retry: {
         limit: 2,
-        statusCodes: [408, 413, 429, 511],
+        statusCodes: [408, 413, 429],
         errorCodes: ['ETIMEDOUT', 'ECONNRESET']
       },
       headers: {
@@ -273,17 +62,17 @@ export class CloudClient {
         beforeRequest: [
           async (options) => {
             if (options.url.href.includes(API_URL)) {
-              const accessToken = await this.getAccessToken()
+              const accessToken = await this.authClient.getAccessToken()
               signatureAccesstoken(options, accessToken)
             } else if (options.url.href.includes(WEB_URL)) {
               if (options.url.href.includes('/open')) {
                 const appkey = '600100422'
                 signatureAppKey(options, appkey)
               }
-              const sessionKey = await this.getSessionKey()
+              const sessionKey = await this.authClient.getSessionKey()
               options.url.searchParams.set('sessionKey', sessionKey)
             } else if (options.url.href.includes(UPLOAD_URL)) {
-              const sessionKey = await this.getSessionKey()
+              const sessionKey = await this.authClient.getSessionKey()
               const rsaKey = await this.generateRsaKey()
               signatureUpload(options, rsaKey, sessionKey)
             }
@@ -300,12 +89,12 @@ export class CloudClient {
               if (errorCode === 'InvalidAccessToken') {
                 logger.debug('InvalidAccessToken retry...')
                 logger.debug('Refresh AccessToken')
-                this.session.accessToken = ''
+                this.authClient.clearAccessToken()
                 return retryWithMergedOptions({})
               } else if (errorCode === 'InvalidSessionKey') {
                 logger.debug('InvalidSessionKey retry...')
                 logger.debug('Refresh InvalidSessionKey')
-                this.session.sessionKey = ''
+                this.authClient.clearSessionKey()
                 return retryWithMergedOptions({})
               }
             }
@@ -314,112 +103,6 @@ export class CloudClient {
         ]
       }
     })
-  }
-
-  #valid = (options: ConfigurationOptions) => {
-    if (!options.token && (!options.username || !options.password)) {
-      logger.error('valid')
-      throw new Error('Please provide username and password or token !')
-    }
-  }
-
-  async getSession() {
-    const { accessToken, expiresIn, refreshToken } = await this.tokenStore.get()
-
-    if (accessToken && expiresIn && expiresIn > Date.now()) {
-      try {
-        return await this.authClient.loginByAccessToken(accessToken)
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-
-    if (refreshToken) {
-      try {
-        const refreshTokenSession = await this.authClient.refreshToken(refreshToken)
-        await this.tokenStore.update({
-          accessToken: refreshTokenSession.accessToken,
-          refreshToken: refreshTokenSession.refreshToken,
-          expiresIn: new Date(Date.now() + refreshTokenSession.expiresIn * 1000).getTime()
-        })
-        return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-
-    if (this.ssonCookie) {
-      try {
-        const loginToken = await this.authClient.loginBySsoCooike(this.ssonCookie)
-        await this.tokenStore.update({
-          accessToken: loginToken.accessToken,
-          refreshToken: loginToken.refreshToken,
-          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
-        })
-        return loginToken
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-
-    if (this.username && this.password) {
-      try {
-        const loginToken = await this.authClient.loginByPassword(this.username, this.password)
-        await this.tokenStore.update({
-          accessToken: loginToken.accessToken,
-          refreshToken: loginToken.refreshToken,
-          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
-        })
-        return loginToken
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-    throw new Error('Can not get session.')
-  }
-
-  /**
-   * 获取 sessionKey
-   * @returns sessionKey
-   */
-  async getSessionKey() {
-    if (this.session.sessionKey) {
-      return this.session.sessionKey
-    }
-    if (!this.#sessionKeyPromise) {
-      this.#sessionKeyPromise = this.getSession()
-        .then((result) => {
-          this.session.sessionKey = result.sessionKey
-          return result.sessionKey
-        })
-        .finally(() => {
-          this.#sessionKeyPromise = null
-        })
-    }
-    const result = await this.#sessionKeyPromise
-    return result
-  }
-
-  /**
-   * 获取 accessToken
-   * @returns accessToken
-   */
-  async getAccessToken() {
-    if (this.session.accessToken) {
-      return this.session.accessToken
-    }
-    if (!this.#accessTokenPromise) {
-      this.#accessTokenPromise = this.#getAccessTokenBySsKey()
-        .then((result) => {
-          this.session.accessToken = result.accessToken
-          return result
-        })
-        .finally(() => {
-          this.#accessTokenPromise = null
-        })
-    }
-    const result = await this.#accessTokenPromise
-    return result.accessToken
   }
 
   /**
@@ -469,13 +152,6 @@ export class CloudClient {
         }&model=${config.model}`
       )
       .json()
-  }
-
-  /**
-   * 获取 accessToken
-   */
-  #getAccessTokenBySsKey(): Promise<AccessTokenResponse> {
-    return this.request.get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`).json()
   }
 
   #generateRsaKey(): Promise<RsaKeyResponse> {
@@ -723,12 +399,13 @@ export class CloudClient {
       fileMd5,
       sliceMd5
     }
+    let fd
     try {
       // md5校验
       const res = await this.initMultiUpload(initParams, familyId)
       const { uploadFileId, fileDataExists } = res.data
       if (!fileDataExists) {
-        const fd = await fs.promises.open(filePath, 'r')
+        fd = await fs.promises.open(filePath, 'r')
         const buffer = Buffer.alloc(fileSize)
         await fd.read(buffer, 0, fileSize)
         await this.#partUpload(
@@ -766,6 +443,8 @@ export class CloudClient {
         callbacks.onError(e)
       }
       throw e
+    } finally {
+      fd?.close()
     }
   }
 
