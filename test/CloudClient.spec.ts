@@ -109,7 +109,26 @@ describe('CloudClient', () => {
   })
 })
 
-describe('CloudAuthClient session', () => {
+describe('CloudClient valid', () => {
+  it('token is empty', () => {
+    try {
+      new CloudClient({})
+    } catch (err) {
+      expect(err).to.be.an('error')
+      expect(err.message).to.equal('Please provide username and password or token !')
+    }
+  })
+  it('password is empty', () => {
+    try {
+      new CloudClient({ username: 'username' })
+    } catch (err) {
+      expect(err).to.be.an('error')
+      expect(err.message).to.equal('Please provide username and password or token !')
+    }
+  })
+})
+
+describe('CloudClient session', () => {
   logger.configure({
     isDebugEnabled: true
   })
@@ -241,7 +260,7 @@ describe('CloudAuthClient session', () => {
       token: store,
       ssonCookie: testCookie
     })
-    await cloudClient.authClient.getSession()
+    await cloudClient.getSession()
   })
 
   it('Refresh InvalidSessionKey', async () => {
@@ -263,7 +282,8 @@ describe('CloudAuthClient session', () => {
           return [
             400,
             {
-              errorCode: 'InvalidSessionKey'
+              errorCode: 'InvalidSessionKey',
+              errorMsg: 'sessionKey is expirated'
             }
           ]
         } else {
@@ -308,7 +328,7 @@ describe('CloudAuthClient session', () => {
       .reply(() => {
         if (retry) {
           retry = false
-          return [400, { errorCode: 'InvalidAccessToken' }]
+          return [400, { errorCode: 'InvalidAccessToken', errorMsg: 'accessToken is expirated' }]
         } else {
           return [200]
         }

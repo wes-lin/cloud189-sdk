@@ -7,6 +7,7 @@ import {
   FamilyListResponse,
   FamilyUserSignResponse,
   ConfigurationOptions,
+  ClientSession,
   PageQuery,
   MediaType,
   OrderByType,
@@ -20,7 +21,16 @@ import {
   UploadCallbacks,
   PartNumberKey,
   RenameFolderRequest,
-  CreateBatchTaskRequest
+  CreateBatchTaskRequest,
+  AccessTokenResponse,
+  CreateFamilyBatchTaskRequest,
+  CreateFamilyFolderRequest,
+  RenameFamilyFolderRequest,
+  CommitMultiFamilyUploadRequest,
+  CommitMultiUploadRequest,
+  FamilyRequest,
+  initMultiUploadRequest,
+  initMultiFamilyUploadRequest
 } from './types'
 import { logger } from './log'
 import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize } from './util'
@@ -28,6 +38,7 @@ import { WEB_URL, API_URL, UserAgent, UPLOAD_URL } from './const'
 import { signatureAccesstoken, signatureAppKey, signatureUpload } from './signature'
 import { CloudAuthClient } from './CloudAuthClient'
 import { logHook } from './hook'
+import { MemoryStore, Store } from './store'
 
 const config = {
   clientId: '538135150693412',
@@ -40,13 +51,29 @@ const config = {
  * @public
  */
 export class CloudClient {
+  username: string
+  password: string
+  ssonCookie: string
+  tokenStore: Store
   readonly request: Got
   readonly authClient: CloudAuthClient
+  readonly session: ClientSession
   private rsaKey: RsaKey
-  #generateRsaKeyPromise: Promise<RsaKeyResponse>
+  private sessionKeyPromise: Promise<string>
+  private accessTokenPromise: Promise<AccessTokenResponse>
+  private generateRsaKeyPromise: Promise<RsaKeyResponse>
 
   constructor(_options: ConfigurationOptions) {
-    this.authClient = new CloudAuthClient(_options)
+    this.#valid(_options)
+    this.username = _options.username
+    this.password = _options.password
+    this.ssonCookie = _options.ssonCookie
+    this.tokenStore = _options.token || new MemoryStore()
+    this.authClient = new CloudAuthClient()
+    this.session = {
+      accessToken: '',
+      sessionKey: ''
+    }
     this.rsaKey = null
     this.request = got.extend({
       retry: {
@@ -63,17 +90,17 @@ export class CloudClient {
         beforeRequest: [
           async (options) => {
             if (options.url.href.includes(API_URL)) {
-              const accessToken = await this.authClient.getAccessToken()
+              const accessToken = await this.getAccessToken()
               signatureAccesstoken(options, accessToken)
             } else if (options.url.href.includes(WEB_URL)) {
               if (options.url.href.includes('/open')) {
                 const appkey = '600100422'
                 signatureAppKey(options, appkey)
               }
-              const sessionKey = await this.authClient.getSessionKey()
+              const sessionKey = await this.getSessionKey()
               options.url.searchParams.set('sessionKey', sessionKey)
             } else if (options.url.href.includes(UPLOAD_URL)) {
-              const sessionKey = await this.authClient.getSessionKey()
+              const sessionKey = await this.getSessionKey()
               const rsaKey = await this.generateRsaKey()
               signatureUpload(options, rsaKey, sessionKey)
             }
@@ -83,20 +110,24 @@ export class CloudClient {
           logHook,
           async (response, retryWithMergedOptions) => {
             if (response.statusCode === 400) {
-              const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
-                errorCode: string
-                errorMsg: string
-              }
-              if (errorCode === 'InvalidAccessToken') {
-                logger.debug('InvalidAccessToken retry...')
-                logger.debug('Refresh AccessToken')
-                this.authClient.clearAccessToken()
-                return retryWithMergedOptions({})
-              } else if (errorCode === 'InvalidSessionKey') {
-                logger.debug('InvalidSessionKey retry...')
-                logger.debug('Refresh InvalidSessionKey')
-                this.authClient.clearSessionKey()
-                return retryWithMergedOptions({})
+              try {
+                const { errorCode, errorMsg } = JSON.parse(response.body.toString()) as {
+                  errorCode: string
+                  errorMsg: string
+                }
+                if (errorCode === 'InvalidAccessToken') {
+                  logger.debug(`InvalidAccessToken retry..., errorMsg: ${errorMsg}`)
+                  logger.debug('Refresh AccessToken')
+                  this.session.accessToken = ''
+                  return retryWithMergedOptions({})
+                } else if (errorCode === 'InvalidSessionKey') {
+                  logger.debug(`InvalidSessionKey retry..., errorMsg: ${errorMsg}`)
+                  logger.debug('Refresh InvalidSessionKey')
+                  this.session.sessionKey = ''
+                  return retryWithMergedOptions({})
+                }
+              } catch (e) {
+                logger.error(e)
               }
             }
             return response
@@ -104,6 +135,112 @@ export class CloudClient {
         ]
       }
     })
+  }
+
+  #valid = (options: ConfigurationOptions) => {
+    if (!options.token && (!options.username || !options.password)) {
+      logger.error('valid')
+      throw new Error('Please provide username and password or token !')
+    }
+  }
+
+  async getSession() {
+    const { accessToken, expiresIn, refreshToken } = await this.tokenStore.get()
+
+    if (accessToken && expiresIn && expiresIn > Date.now()) {
+      try {
+        return await this.authClient.loginByAccessToken(accessToken)
+      } catch (e) {
+        logger.error(e)
+      }
+    }
+
+    if (refreshToken) {
+      try {
+        const refreshTokenSession = await this.authClient.refreshToken(refreshToken)
+        await this.tokenStore.update({
+          accessToken: refreshTokenSession.accessToken,
+          refreshToken: refreshTokenSession.refreshToken,
+          expiresIn: new Date(Date.now() + refreshTokenSession.expiresIn * 1000).getTime()
+        })
+        return await this.authClient.loginByAccessToken(refreshTokenSession.accessToken)
+      } catch (e) {
+        logger.error(e)
+      }
+    }
+
+    if (this.ssonCookie) {
+      try {
+        const loginToken = await this.authClient.loginBySsoCooike(this.ssonCookie)
+        await this.tokenStore.update({
+          accessToken: loginToken.accessToken,
+          refreshToken: loginToken.refreshToken,
+          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
+        })
+        return loginToken
+      } catch (e) {
+        logger.error(e)
+      }
+    }
+
+    if (this.username && this.password) {
+      try {
+        const loginToken = await this.authClient.loginByPassword(this.username, this.password)
+        await this.tokenStore.update({
+          accessToken: loginToken.accessToken,
+          refreshToken: loginToken.refreshToken,
+          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
+        })
+        return loginToken
+      } catch (e) {
+        logger.error(e)
+      }
+    }
+    throw new Error('Can not get session.')
+  }
+
+  /**
+   * 获取 sessionKey
+   * @returns sessionKey
+   */
+  async getSessionKey() {
+    if (this.session.sessionKey) {
+      return this.session.sessionKey
+    }
+    if (!this.sessionKeyPromise) {
+      this.sessionKeyPromise = this.getSession()
+        .then((result) => {
+          this.session.sessionKey = result.sessionKey
+          return result.sessionKey
+        })
+        .finally(() => {
+          this.sessionKeyPromise = null
+        })
+    }
+    const result = await this.sessionKeyPromise
+    return result
+  }
+
+  /**
+   * 获取 accessToken
+   * @returns accessToken
+   */
+  async getAccessToken() {
+    if (this.session.accessToken) {
+      return this.session.accessToken
+    }
+    if (!this.accessTokenPromise) {
+      this.accessTokenPromise = this.#getAccessTokenBySsKey()
+        .then((result) => {
+          this.session.accessToken = result.accessToken
+          return result
+        })
+        .finally(() => {
+          this.accessTokenPromise = null
+        })
+    }
+    const result = await this.accessTokenPromise
+    return result.accessToken
   }
 
   /**
@@ -114,8 +251,8 @@ export class CloudClient {
     if (this.rsaKey && new Date(this.rsaKey.expire).getTime() > Date.now()) {
       return this.rsaKey
     }
-    if (!this.#generateRsaKeyPromise) {
-      this.#generateRsaKeyPromise = this.#generateRsaKey()
+    if (!this.generateRsaKeyPromise) {
+      this.generateRsaKeyPromise = this.#generateRsaKey()
         .then((res) => {
           this.rsaKey = {
             expire: res.expire,
@@ -126,10 +263,10 @@ export class CloudClient {
           return res
         })
         .finally(() => {
-          this.#generateRsaKeyPromise = null
+          this.generateRsaKeyPromise = null
         })
     }
-    const result = await this.#generateRsaKeyPromise
+    const result = await this.generateRsaKeyPromise
     return result
   }
 
@@ -153,6 +290,13 @@ export class CloudClient {
         }&model=${config.model}`
       )
       .json()
+  }
+
+  /**
+   * 获取 accessToken
+   */
+  #getAccessTokenBySsKey(): Promise<AccessTokenResponse> {
+    return this.request.get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`).json()
   }
 
   #generateRsaKey(): Promise<RsaKeyResponse> {
@@ -215,36 +359,28 @@ export class CloudClient {
     }
   }
 
+  #isFamily(request: any): request is FamilyRequest {
+    return 'familyId' in request && request.familyId !== undefined
+  }
+
   /**
    * 创建文件夹
-   * @param folderReuest
+   * @param createFolderRequest
    * @returns
    */
-  createFolder(createFolderRequest: CreateFolderRequest): Promise<{
+  createFolder(createFolderRequest: CreateFolderRequest | CreateFamilyFolderRequest): Promise<{
     id: string
     name: string
     parentId: number
   }> {
-    if (createFolderRequest.familyId) {
-      return this.request
-        .post(`${API_URL}/open/family/file/createFolder.action`, {
-          form: {
-            folderName: createFolderRequest.folderName,
-            parentId: createFolderRequest.parentFolderId,
-            familyId: createFolderRequest.familyId
-          }
-        })
-        .json()
-    } else {
-      return this.request
-        .post(`${API_URL}/open/file/createFolder.action`, {
-          form: {
-            folderName: createFolderRequest.folderName,
-            parentFolderId: createFolderRequest.parentFolderId
-          }
-        })
-        .json()
-    }
+    const url = this.#isFamily(createFolderRequest)
+      ? `${API_URL}/open/family/file/createFolder.action`
+      : `${API_URL}/open/file/createFolder.action`
+    return this.request
+      .post(url, {
+        form: createFolderRequest
+      })
+      .json()
   }
 
   /**
@@ -252,90 +388,66 @@ export class CloudClient {
    * @param folderRequest
    * @returns
    */
-  renameFolder(folderRequest: RenameFolderRequest) {
-    if (folderRequest.familyId) {
-      return this.request
-        .post(`${API_URL}/open/family/file/renameFolder.action`, {
-          form: {
-            destFolderName: folderRequest.folderName,
-            folderId: folderRequest.folderId,
-            familyId: folderRequest.familyId
-          }
-        })
-        .json()
-    } else {
-      return this.request
-        .post(`${API_URL}/open/file/renameFolder.action`, {
-          form: {
-            destFolderName: folderRequest.folderName,
-            folderId: folderRequest.folderId
-          }
-        })
-        .json()
-    }
+  renameFolder(renameFolderRequest: RenameFolderRequest | RenameFamilyFolderRequest) {
+    const url = this.#isFamily(renameFolderRequest)
+      ? `${API_URL}/open/family/file/renameFolder.action`
+      : `${API_URL}/open/file/renameFolder.action`
+    return this.request
+      .post(url, {
+        form: renameFolderRequest
+      })
+      .json()
   }
 
-  async initMultiUpload(
-    params: {
-      parentFolderId: string
-      fileName: string
-      fileSize: number
-      sliceSize: number
-      fileMd5?: string
-      sliceMd5?: string
-    },
-    familyId?: number
-  ) {
+  async initMultiUpload(params: initMultiUploadRequest | initMultiFamilyUploadRequest) {
     const { parentFolderId, fileName, fileSize, sliceSize, fileMd5, sliceMd5 } = params
-    const initParams = {
+    let initParams = {
       parentFolderId,
       fileName,
       fileSize,
       sliceSize,
       ...(fileMd5 && sliceMd5 ? { fileMd5, sliceMd5 } : { lazyCheck: 1 })
     }
-    if (familyId) {
-      return await this.request
-        .get(`${UPLOAD_URL}/family/initMultiUpload`, {
-          searchParams: {
-            ...initParams,
-            familyId
-          }
-        })
-        .json<UploadInitResponse>()
-    } else {
-      return await this.request
-        .get(`${UPLOAD_URL}/person/initMultiUpload`, {
-          searchParams: {
-            ...initParams
-          }
-        })
-        .json<UploadInitResponse>()
+    let url = `${UPLOAD_URL}/person/initMultiUpload`
+    if (this.#isFamily(params)) {
+      url = `${UPLOAD_URL}/family/initMultiUpload`
+      initParams = Object.assign(initParams, {
+        familyId: params.familyId
+      })
     }
+    return await this.request
+      .get(url, {
+        searchParams: {
+          ...initParams
+        }
+      })
+      .json<UploadInitResponse>()
   }
 
-  commitMultiUpload(
-    params: {
-      fileMd5: string
-      sliceMd5: string
-      uploadFileId: string
-      lazyCheck?: number
-    },
-    familyId?: number
-  ) {
+  commitMultiUpload(params: CommitMultiUploadRequest | CommitMultiFamilyUploadRequest) {
+    const url = this.#isFamily(params)
+      ? `${UPLOAD_URL}/family/commitMultiUploadFile`
+      : `${UPLOAD_URL}/person/commitMultiUploadFile`
     return this.request
-      .get(`${UPLOAD_URL}/${familyId ? 'family' : 'person'}/commitMultiUploadFile`, {
-        searchParams: params
+      .get(url, {
+        searchParams: {
+          ...params
+        }
       })
       .json<UploadCommitResponse>()
   }
 
-  checkTransSecond(
-    params: { fileMd5: string; sliceMd5: string; uploadFileId: string },
+  checkTransSecond(params: {
+    fileMd5: string
+    sliceMd5: string
+    uploadFileId: string
     familyId?: number
-  ) {
+  }) {
+    const url = this.#isFamily(params)
+      ? `${UPLOAD_URL}/family/checkTransSecond`
+      : `${UPLOAD_URL}/person/checkTransSecond`
     return this.request
-      .get(`${UPLOAD_URL}/${familyId ? 'family' : 'person'}/checkTransSecond`, {
+      .get(url, {
         searchParams: params
       })
       .json<UploadInitResponse>()
@@ -351,8 +463,11 @@ export class CloudClient {
       partInfo,
       uploadFileId
     }
+    const url = familyId
+      ? `${UPLOAD_URL}/family/getMultiUploadUrls`
+      : `${UPLOAD_URL}/person/getMultiUploadUrls`
     const urls = await this.request
-      .get(`${UPLOAD_URL}/${familyId ? 'family' : 'person'}/getMultiUploadUrls`, {
+      .get(url, {
         searchParams: multiUploadUrParams
       })
       .json<MultiUploadUrlsResponse>()
@@ -398,12 +513,13 @@ export class CloudClient {
       fileSize,
       sliceSize,
       fileMd5,
-      sliceMd5
+      sliceMd5,
+      familyId
     }
     let fd
     try {
       // md5校验
-      const res = await this.initMultiUpload(initParams, familyId)
+      const res = await this.initMultiUpload(initParams)
       const { uploadFileId, fileDataExists } = res.data
       if (!fileDataExists) {
         fd = await fs.promises.open(filePath, 'r')
@@ -415,7 +531,7 @@ export class CloudClient {
             md5: fileMd5,
             buffer,
             uploadFileId,
-            familyId: ''
+            familyId
           },
           {
             onProgress: callbacks.onProgress,
@@ -428,14 +544,12 @@ export class CloudClient {
           callbacks.onProgress(100) // 秒传直接显示100%
         }
       }
-      const commitResult = await this.commitMultiUpload(
-        {
-          fileMd5,
-          sliceMd5,
-          uploadFileId
-        },
+      const commitResult = await this.commitMultiUpload({
+        fileMd5,
+        sliceMd5,
+        uploadFileId,
         familyId
-      )
+      })
       if (callbacks.onComplete) {
         callbacks.onComplete(commitResult)
       }
@@ -462,18 +576,20 @@ export class CloudClient {
       parentFolderId,
       fileName,
       fileSize,
-      sliceSize
+      sliceSize,
+      familyId
     }
     try {
-      const res = await this.initMultiUpload(initParams, familyId)
+      const res = await this.initMultiUpload(initParams)
       const { uploadFileId } = res.data
       const checkTransSecondParams = {
         fileMd5,
         sliceMd5,
-        uploadFileId
+        uploadFileId,
+        familyId
       }
       // md5校验
-      const checkRes = await this.checkTransSecond(checkTransSecondParams, familyId)
+      const checkRes = await this.checkTransSecond(checkTransSecondParams)
       if (!checkRes.data.fileDataExists) {
         const fd = await fs.promises.open(filePath, 'r')
         const chunkCount = chunkMd5s.length
@@ -514,15 +630,13 @@ export class CloudClient {
           callbacks.onProgress(100) // 秒传直接显示100%
         }
       }
-      const commitResult = await this.commitMultiUpload(
-        {
-          fileMd5,
-          sliceMd5,
-          uploadFileId,
-          lazyCheck: 1
-        },
+      const commitResult = await this.commitMultiUpload({
+        fileMd5,
+        sliceMd5,
+        uploadFileId,
+        lazyCheck: 1,
         familyId
-      )
+      })
       if (callbacks.onComplete) {
         callbacks.onComplete(commitResult)
       }
@@ -613,13 +727,10 @@ export class CloudClient {
     return []
   }
 
-  async createBatchTask(createBatchTaskRequest: CreateBatchTaskRequest) {
+  async createBatchTask(
+    createBatchTaskRequest: CreateBatchTaskRequest | CreateFamilyBatchTaskRequest
+  ) {
     let form = {
-      ...(createBatchTaskRequest.familyId
-        ? {
-            familyId: createBatchTaskRequest.familyId
-          }
-        : {}),
       ...(createBatchTaskRequest.targetFolderId
         ? {
             targetFolderId: createBatchTaskRequest.targetFolderId
@@ -644,12 +755,12 @@ export class CloudClient {
   }
 
   getFileDownloadUrl(params: { fileId: string; familyId?: string }) {
-    return this.request(
-      `${API_URL}/open/${params.familyId ? 'family/' : ''}/file/getFileDownloadUrl.action`,
-      {
-        searchParams: params
-      }
-    ).json<{
+    const url = params.familyId
+      ? `${API_URL}/open/family/file/getFileDownloadUrl.action`
+      : `${API_URL}/open/file/getFileDownloadUrl.action`
+    return this.request(url, {
+      searchParams: params
+    }).json<{
       fileDownloadUrl: string
     }>()
   }

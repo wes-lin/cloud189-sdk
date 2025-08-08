@@ -11,16 +11,8 @@ import {
   ReturnURL,
   AccountType
 } from './const'
-import { Store, MemoryStore } from './store'
-import {
-  RefreshTokenSession,
-  TokenSession,
-  CacheQuery,
-  ConfigurationOptions,
-  ClientSession,
-  AccessTokenResponse
-} from './types'
-import { getSignature, rsaEncrypt } from './util'
+import { RefreshTokenSession, TokenSession, CacheQuery, ConfigurationOptions } from './types'
+import { rsaEncrypt } from './util'
 import { logHook, checkErrorHook } from './hook'
 
 interface LoginResponse {
@@ -33,25 +25,9 @@ interface LoginResponse {
  * @public
  */
 export class CloudAuthClient {
-  username: string
-  password: string
-  ssonCookie: string
-  tokenStore: Store
-  #sessionKeyPromise: Promise<string>
-  #accessTokenPromise: Promise<AccessTokenResponse>
-  readonly session: ClientSession
   readonly authRequest: Got
 
-  constructor(_options: ConfigurationOptions) {
-    this.#valid(_options)
-    this.username = _options.username
-    this.password = _options.password
-    this.ssonCookie = _options.ssonCookie
-    this.tokenStore = _options.token || new MemoryStore()
-    this.session = {
-      accessToken: '',
-      sessionKey: ''
-    }
+  constructor() {
     this.authRequest = got.extend({
       headers: {
         'User-Agent': UserAgent,
@@ -61,13 +37,6 @@ export class CloudAuthClient {
         afterResponse: [logHook, checkErrorHook]
       }
     })
-  }
-
-  #valid = (options: ConfigurationOptions) => {
-    if (!options.token && (!options.username || !options.password)) {
-      logger.error('valid')
-      throw new Error('Please provide username and password or token !')
-    }
   }
 
   /**
@@ -214,138 +183,5 @@ export class CloudAuthClient {
         }
       })
       .json()
-  }
-
-  async getSession() {
-    const { accessToken, expiresIn, refreshToken } = await this.tokenStore.get()
-
-    if (accessToken && expiresIn && expiresIn > Date.now()) {
-      try {
-        return await this.loginByAccessToken(accessToken)
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-
-    if (refreshToken) {
-      try {
-        const refreshTokenSession = await this.refreshToken(refreshToken)
-        await this.tokenStore.update({
-          accessToken: refreshTokenSession.accessToken,
-          refreshToken: refreshTokenSession.refreshToken,
-          expiresIn: new Date(Date.now() + refreshTokenSession.expiresIn * 1000).getTime()
-        })
-        return await this.loginByAccessToken(refreshTokenSession.accessToken)
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-
-    if (this.ssonCookie) {
-      try {
-        const loginToken = await this.loginBySsoCooike(this.ssonCookie)
-        await this.tokenStore.update({
-          accessToken: loginToken.accessToken,
-          refreshToken: loginToken.refreshToken,
-          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
-        })
-        return loginToken
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-
-    if (this.username && this.password) {
-      try {
-        const loginToken = await this.loginByPassword(this.username, this.password)
-        await this.tokenStore.update({
-          accessToken: loginToken.accessToken,
-          refreshToken: loginToken.refreshToken,
-          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
-        })
-        return loginToken
-      } catch (e) {
-        logger.error(e)
-      }
-    }
-    throw new Error('Can not get session.')
-  }
-
-  /**
-   * 获取 sessionKey
-   * @returns sessionKey
-   */
-  async getSessionKey() {
-    if (this.session.sessionKey) {
-      return this.session.sessionKey
-    }
-    if (!this.#sessionKeyPromise) {
-      this.#sessionKeyPromise = this.getSession()
-        .then((result) => {
-          this.session.sessionKey = result.sessionKey
-          return result.sessionKey
-        })
-        .finally(() => {
-          this.#sessionKeyPromise = null
-        })
-    }
-    const result = await this.#sessionKeyPromise
-    return result
-  }
-
-  clearSessionKey() {
-    this.session.sessionKey = ''
-  }
-
-  /**
-   * 获取 accessToken
-   */
-  async #getAccessTokenBySsKey(): Promise<AccessTokenResponse> {
-    const time = String(Date.now())
-    const appkey = '600100422'
-    const signature = getSignature({
-      Timestamp: time,
-      AppKey: appkey
-    })
-    const sessionKey = await this.getSessionKey()
-    return this.authRequest
-      .get(`${WEB_URL}/api/open/oauth2/getAccessTokenBySsKey.action`, {
-        headers: {
-          'Sign-Type': '1',
-          Signature: signature,
-          Timestamp: time,
-          AppKey: appkey
-        },
-        searchParams: {
-          sessionKey
-        }
-      })
-      .json()
-  }
-
-  /**
-   * 获取 accessToken
-   * @returns accessToken
-   */
-  async getAccessToken() {
-    if (this.session.accessToken) {
-      return this.session.accessToken
-    }
-    if (!this.#accessTokenPromise) {
-      this.#accessTokenPromise = this.#getAccessTokenBySsKey()
-        .then((result) => {
-          this.session.accessToken = result.accessToken
-          return result
-        })
-        .finally(() => {
-          this.#accessTokenPromise = null
-        })
-    }
-    const result = await this.#accessTokenPromise
-    return result.accessToken
-  }
-
-  clearAccessToken() {
-    this.session.accessToken = ''
   }
 }

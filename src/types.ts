@@ -250,6 +250,10 @@ export interface FolderItem {
   starLabel: number
 }
 
+export interface FamilyRequest {
+  familyId: number
+}
+
 /**
  * 创建文件夹
  * @public
@@ -257,19 +261,41 @@ export interface FolderItem {
 export interface CreateFolderRequest {
   parentFolderId: string
   folderName: string
-  familyId?: number
 }
+
+export interface CreateFamilyFolderRequest extends FamilyRequest, CreateFolderRequest {}
 
 export interface RenameFolderRequest {
   folderId: string
   folderName: string
-  familyId?: number
 }
+
+export interface RenameFamilyFolderRequest extends FamilyRequest, RenameFolderRequest {}
 
 export interface RsaKeyResponse extends RsaKey {
   res_code: number
   res_message: string
 }
+
+export interface initMultiUploadRequest {
+  parentFolderId: string
+  fileName: string
+  fileSize: number
+  sliceSize: number
+  fileMd5?: string
+  sliceMd5?: string
+}
+
+export interface initMultiFamilyUploadRequest extends FamilyRequest, initMultiUploadRequest {}
+
+export interface CommitMultiUploadRequest {
+  fileMd5: string
+  sliceMd5: string
+  uploadFileId: string
+  lazyCheck?: number
+}
+
+export interface CommitMultiFamilyUploadRequest extends FamilyRequest, CommitMultiUploadRequest {}
 
 /**
  * 容量信息
@@ -448,6 +474,7 @@ export interface UploadCallbacks {
 }
 
 type TaskType = 'DELETE' | 'MOVE' | 'COPY'
+
 export interface CreateBatchTaskRequest {
   type: TaskType
   taskInfos: [
@@ -459,5 +486,6 @@ export interface CreateBatchTaskRequest {
     }
   ]
   targetFolderId?: string
-  familyId?: number
 }
+
+export interface CreateFamilyBatchTaskRequest extends FamilyRequest, CreateBatchTaskRequest {}

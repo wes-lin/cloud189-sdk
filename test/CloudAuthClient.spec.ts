@@ -17,11 +17,7 @@ describe('CloudAuthClient', () => {
       refreshToken: 'stored_refresh_token',
       expiresIn: Date.now() + 3600000 // 1 hour later
     })
-    authClient = new CloudAuthClient({
-      username: 'test_user',
-      password: 'test_pass',
-      token: store
-    })
+    authClient = new CloudAuthClient()
     const mockSession = {
       sessionKey: 'test_session_key',
       accessToken: 'test_access_token',
@@ -213,25 +209,6 @@ describe('CloudAuthClient', () => {
       await authClient.loginByPassword('username', 'password')
     } catch (err) {
       expect(err).to.be.an('error')
-    }
-  })
-})
-
-describe('CloudAuthClient valid', () => {
-  it('token is empty', () => {
-    try {
-      new CloudAuthClient({})
-    } catch (err) {
-      expect(err).to.be.an('error')
-      expect(err.message).to.equal('Please provide username and password or token !')
-    }
-  })
-  it('password is empty', () => {
-    try {
-      new CloudAuthClient({ username: 'username' })
-    } catch (err) {
-      expect(err).to.be.an('error')
-      expect(err.message).to.equal('Please provide username and password or token !')
     }
   })
 })
