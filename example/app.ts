@@ -1,7 +1,12 @@
 import { CloudClient, FileTokenStore, logger } from '../src/index'
-import fs from 'fs'
-import path from 'path'
-import { createFolderTest, renameFolderTest } from './file'
+import { createBatchTaskTest } from './batchTask'
+import {
+  createFolderTest,
+  getFileDownloadUrlTest,
+  listFilesTest,
+  renameFolderTest,
+  uploadFileTest
+} from './file'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 ;(async () => {
@@ -17,12 +22,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   try {
     const userSingRes = await client.userSign()
     console.log(userSingRes)
-    const info = await Promise.all([
-      client.getUserSizeInfo(),
-      client.getUserSizeInfo()
-      // client.getUserSizeInfo(),
-      // client.getUserSizeInfo()
-    ])
+    const info = await Promise.all([client.getUserSizeInfo(), client.getUserSizeInfo()])
     console.log(info)
     const { familyInfoResp } = await client.getFamilyList()
     const { familyId } = familyInfoResp[0]
@@ -35,112 +35,54 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     const res = await createFolderTest(client, {
       familyId
     })
+    const familyFolderName = res[0].name
     const familyFolderId = res[0].id
-    const familyParentFolderId = res[1].parentId
+    const familyParentFolderId = res[0].parentId
+    const personFolderName = res[0].name
     const personFolderId = res[1].id
-    const personFolderName = res[1].name
     const personParentFolderId = res[1].parentId
-    const res2 = renameFolderTest(client, {
+    const renameFolderRes = await renameFolderTest(client, {
       familyId,
       familyFolderId,
       familyParentFolderId,
       personFolderId,
-      personFolderName
+      personFolderName,
+      personParentFolderId,
+      familyFolderName
     })
-    // console.log(res2)
-    // const res1 = await Promise.all([
-    //   client.getListFiles(undefined, 735500198),
-    //   client.getListFiles({
-    //     folderId: -11
-    //   })
-    // ])
-    // console.log(res1)
-    const uploadFamilyFile = (parentFolderId: string, filePath: string, familyId: number) =>
-      client.upload(
-        {
-          parentFolderId,
-          filePath,
-          familyId
-        },
-        {
-          onProgress: (process) => {
-            console.log(
-              `familyId: ${familyId}  uploadFamily: ${filePath} ⬆️  transferred: ${process}`
-            )
-          },
-          onComplete(response) {
-            console.log(`uploadFamily ${filePath} complete`)
-          }
-        }
-      )
-    const uploadPersonFile = (parentFolderId: string, filePath: string) =>
-      client.upload(
-        {
-          parentFolderId,
-          filePath
-        },
-        {
-          onProgress: (process) => {
-            console.log(`uploadPerson: ${filePath} ⬆️  transferred: ${process}`)
-          },
-          onComplete(response) {
-            console.log(`uploadPerson ${filePath} complete`)
-          }
-        }
-      )
-    const tempdDir = '.temp'
-    const files = fs.readdirSync(tempdDir)
-    const txtFiles = files.filter((file) => path.extname(file).toLowerCase() === '.txt')
-    const uploadTasks = txtFiles.map((file, index) => {
-      if (index > 1) {
-        return uploadPersonFile(personFolderId, path.join(tempdDir, file))
-      } else {
-        return uploadFamilyFile(familyIdFolderId, path.join(tempdDir, file), familyId)
-      }
+    console.log(renameFolderRes)
+
+    const uploadRes = await uploadFileTest(client, {
+      filePath: '.temp',
+      familyId,
+      familyFolderId,
+      personFolderId
     })
-    const res2 = await Promise.all(uploadTasks)
-    console.log(res2)
-    await delay(10000)
-    const newnParentFolderId = '424591193599555582'
-    await client.createBatchTask({
-      type: 'MOVE',
-      taskInfos: [
-        {
-          fileId: personFolderId,
-          fileName: personFolderName,
-          isFolder: 1
-        }
-      ],
-      targetFolderId: newnParentFolderId
+    console.log(uploadRes)
+
+    const listFileRes = await listFilesTest(client, {
+      familyId,
+      familyFolderId,
+      personFolderId
     })
-    await delay(10000)
-    await client.createBatchTask({
-      type: 'DELETE',
-      taskInfos: [
-        {
-          fileId: personFolderId,
-          isFolder: 1
-        }
-      ]
-    })
-    await client.createBatchTask({
-      type: 'DELETE',
-      taskInfos: [
-        {
-          fileId: familyIdFolderId,
-          isFolder: 1,
-          srcParentId: familyIdParentFolderId
-        }
-      ],
+    console.log(listFileRes)
+    const familyFileId = listFileRes[0].fileListAO.fileList[0].id
+    const personFileId = listFileRes[1].fileListAO.fileList[0].id
+    const downloadUrlRes = await getFileDownloadUrlTest(client, {
+      familyFileId,
+      personFileId,
       familyId
     })
-    await client.getFileDownloadUrl({
-      fileId: '124401206726071968'
+    console.log(downloadUrlRes)
+    await delay(10000)
+    const taskRes = await createBatchTaskTest(client, {
+      familyId,
+      personFolderId,
+      personFolderName,
+      familyFolderId,
+      familyParentFolderId
     })
-    await client.getFileDownloadUrl({
-      fileId: '424301206725136670',
-      familyId: '735500198'
-    })
+    console.log(taskRes)
   } catch (e) {
     console.error(e)
   }

@@ -327,7 +327,7 @@ export class CloudClient {
    * @param pageQuery
    * @returns
    */
-  getListFiles(pageQuery?: PageQuery, familyId?: number): Promise<FileListResponse> {
+  getListFiles(pageQuery?: PageQuery, familyId?: string): Promise<FileListResponse> {
     const defaultQuery = {
       pageNum: 1,
       pageSize: 60,
@@ -371,7 +371,7 @@ export class CloudClient {
   createFolder(createFolderRequest: CreateFolderRequest | CreateFamilyFolderRequest): Promise<{
     id: string
     name: string
-    parentId: number
+    parentId: string
   }> {
     const url = this.#isFamily(createFolderRequest)
       ? `${API_URL}/open/family/file/createFolder.action`
@@ -389,12 +389,20 @@ export class CloudClient {
    * @returns
    */
   renameFolder(renameFolderRequest: RenameFolderRequest | RenameFamilyFolderRequest) {
-    const url = this.#isFamily(renameFolderRequest)
-      ? `${API_URL}/open/family/file/renameFolder.action`
-      : `${API_URL}/open/file/renameFolder.action`
+    let url = `${API_URL}/open/file/renameFolder.action`
+    let form = {
+      destFolderName: renameFolderRequest.folderName,
+      folderId: renameFolderRequest.folderId
+    }
+    if (this.#isFamily(renameFolderRequest)) {
+      url = `${API_URL}/open/family/file/renameFolder.action`
+      form = Object.assign(form, {
+        familyId: renameFolderRequest.familyId
+      })
+    }
     return this.request
       .post(url, {
-        form: renameFolderRequest
+        form
       })
       .json()
   }
@@ -655,7 +663,7 @@ export class CloudClient {
    * @returns
    */
   async upload(
-    param: { parentFolderId: string; filePath: string; familyId?: number },
+    param: { parentFolderId: string; filePath: string; familyId?: string },
     callbacks: UploadCallbacks = {}
   ) {
     const { filePath, parentFolderId, familyId } = param
@@ -734,6 +742,11 @@ export class CloudClient {
       ...(createBatchTaskRequest.targetFolderId
         ? {
             targetFolderId: createBatchTaskRequest.targetFolderId
+          }
+        : {}),
+      ...(this.#isFamily(createBatchTaskRequest)
+        ? {
+            familyId: createBatchTaskRequest.familyId
           }
         : {}),
       type: createBatchTaskRequest.type,

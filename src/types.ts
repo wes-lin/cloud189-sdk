@@ -10,7 +10,7 @@ export interface FamilyListResponse {
       /**
        * 家庭id
        */
-      familyId: number
+      familyId: string
       /**
        * 家庭名称
        */
@@ -108,7 +108,7 @@ export interface PageQuery {
   /**
    * 文件夹Id
    */
-  folderId?: number
+  folderId?: string
   /**
    * 未知参数 5
    */
@@ -251,7 +251,7 @@ export interface FolderItem {
 }
 
 export interface FamilyRequest {
-  familyId: number
+  familyId: string
 }
 
 /**
@@ -482,7 +482,7 @@ export interface CreateBatchTaskRequest {
       fileId: string
       fileName?: string
       isFolder: number
-      srcParentId?: number
+      srcParentId?: string
     }
   ]
   targetFolderId?: string
