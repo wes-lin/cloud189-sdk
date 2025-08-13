@@ -39,6 +39,7 @@ import { signatureAccesstoken, signatureAppKey, signatureUpload } from './signat
 import { CloudAuthClient } from './CloudAuthClient'
 import { logHook } from './hook'
 import { MemoryStore, Store } from './store'
+import { FileHandle } from 'fs/promises'
 
 const config = {
   clientId: '538135150693412',
@@ -315,8 +316,9 @@ export class CloudClient {
    * 家庭签到任务
    * @param familyId - 家庭id
    * @returns 签到结果
+   * @deprecated
    */
-  familyUserSign(familyId: number): Promise<FamilyUserSignResponse> {
+  familyUserSign(familyId: string): Promise<FamilyUserSignResponse> {
     return this.request
       .get(`${API_URL}/open/family/manage/exeFamilyUserSign.action?familyId=${familyId}`)
       .json()
@@ -407,8 +409,16 @@ export class CloudClient {
       .json()
   }
 
-  async initMultiUpload(params: initMultiUploadRequest | initMultiFamilyUploadRequest) {
-    const { parentFolderId, fileName, fileSize, sliceSize, fileMd5, sliceMd5 } = params
+  /**
+   * 初始化上传
+   * @param initMultiUploadRequest
+   * @returns
+   */
+  async initMultiUpload(
+    initMultiUploadRequest: initMultiUploadRequest | initMultiFamilyUploadRequest
+  ) {
+    const { parentFolderId, fileName, fileSize, sliceSize, fileMd5, sliceMd5 } =
+      initMultiUploadRequest
     let initParams = {
       parentFolderId,
       fileName,
@@ -417,10 +427,10 @@ export class CloudClient {
       ...(fileMd5 && sliceMd5 ? { fileMd5, sliceMd5 } : { lazyCheck: 1 })
     }
     let url = `${UPLOAD_URL}/person/initMultiUpload`
-    if (this.#isFamily(params)) {
+    if (this.#isFamily(initMultiUploadRequest)) {
       url = `${UPLOAD_URL}/family/initMultiUpload`
       initParams = Object.assign(initParams, {
-        familyId: params.familyId
+        familyId: initMultiUploadRequest.familyId
       })
     }
     return await this.request
@@ -432,19 +442,31 @@ export class CloudClient {
       .json<UploadInitResponse>()
   }
 
-  commitMultiUpload(params: CommitMultiUploadRequest | CommitMultiFamilyUploadRequest) {
-    const url = this.#isFamily(params)
+  /**
+   * 提交上传
+   * @param commitMultiUploadRequest
+   * @returns
+   */
+  commitMultiUpload(
+    commitMultiUploadRequest: CommitMultiUploadRequest | CommitMultiFamilyUploadRequest
+  ) {
+    const url = this.#isFamily(commitMultiUploadRequest)
       ? `${UPLOAD_URL}/family/commitMultiUploadFile`
       : `${UPLOAD_URL}/person/commitMultiUploadFile`
     return this.request
       .get(url, {
         searchParams: {
-          ...params
+          ...commitMultiUploadRequest
         }
       })
       .json<UploadCommitResponse>()
   }
 
+  /**
+   * 检测秒传
+   * @param params
+   * @returns
+   */
   checkTransSecond(params: {
     fileMd5: string
     sliceMd5: string
@@ -524,7 +546,7 @@ export class CloudClient {
       sliceMd5,
       familyId
     }
-    let fd
+    let fd: FileHandle | null
     try {
       // md5校验
       const res = await this.initMultiUpload(initParams)
@@ -587,6 +609,7 @@ export class CloudClient {
       sliceSize,
       familyId
     }
+    let fd: FileHandle | null
     try {
       const res = await this.initMultiUpload(initParams)
       const { uploadFileId } = res.data
@@ -599,7 +622,7 @@ export class CloudClient {
       // md5校验
       const checkRes = await this.checkTransSecond(checkTransSecondParams)
       if (!checkRes.data.fileDataExists) {
-        const fd = await fs.promises.open(filePath, 'r')
+        fd = await fs.promises.open(filePath, 'r')
         const chunkCount = chunkMd5s.length
         const progressMap: {
           [key: PartNumberKey]: number
@@ -654,12 +677,15 @@ export class CloudClient {
         callbacks.onError(e)
       }
       throw e
+    } finally {
+      fd?.close()
     }
   }
 
   /**
    * 文件上传
    * @param param
+   * @param callbacks
    * @returns
    */
   async upload(
@@ -701,12 +727,24 @@ export class CloudClient {
     }
   }
 
+  /**
+   * 检测任务状态
+   * @param type
+   * @param taskId
+   * @param maxAttempts
+   * @param interval
+   * @returns
+   */
   async checkTaskStatus(
     type: string,
     taskId: string,
     maxAttempts = 120,
     interval = 500
-  ): Promise<number[]> {
+  ): Promise<{
+    successedFileIdList?: number[]
+    taskId: string
+    taskStatus: number
+  }> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const { taskStatus, successedFileIdList } = await this.request
@@ -716,25 +754,35 @@ export class CloudClient {
           .json<{ taskStatus: number; successedFileIdList: number[] }>()
         if (taskStatus === -1) {
           logger.error('任务异常')
+          return {
+            taskId,
+            taskStatus
+          }
         }
         //重名
         if (taskStatus === 2) {
-          logger.error('文件重名')
-          return []
+          logger.error('文件重名异常')
+          return {
+            taskId,
+            taskStatus
+          }
         }
         //成功
         if (taskStatus === 4) {
-          return successedFileIdList
+          return { successedFileIdList, taskId, taskStatus }
         }
       } catch (e) {
         logger.error(`Check task status attempt ${attempt + 1} failed:` + e)
       }
-
       await new Promise((resolve) => setTimeout(resolve, interval))
     }
-    return []
   }
 
+  /**
+   * 创建任务
+   * @param createBatchTaskRequest
+   * @returns
+   */
   async createBatchTask(
     createBatchTaskRequest: CreateBatchTaskRequest | CreateFamilyBatchTaskRequest
   ) {
@@ -767,6 +815,11 @@ export class CloudClient {
     }
   }
 
+  /**
+   * 获取文件下载路径
+   * @param params
+   * @returns
+   */
   getFileDownloadUrl(params: { fileId: string; familyId?: string }) {
     const url = params.familyId
       ? `${API_URL}/open/family/file/getFileDownloadUrl.action`

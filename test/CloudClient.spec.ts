@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import nock from 'nock'
-import { CloudClient } from '../src/CloudClient'
+import { CloudClient } from '../src'
 import { MemoryStore } from '../src/store'
 import {
   UserSizeInfoResponse,
@@ -88,7 +88,7 @@ describe('CloudClient', () => {
       const mockResponse: FamilyListResponse = {
         familyInfoResp: [
           {
-            familyId: 123,
+            familyId: '123',
             remarkName: '测试家庭',
             type: 1,
             userRole: 1
@@ -104,6 +104,72 @@ describe('CloudClient', () => {
       })
 
       const result = await cloudClient.getFamilyList()
+      expect(result).to.deep.equal(mockResponse)
+    })
+  })
+
+  describe('getFileDownloadUrl', () => {
+    beforeEach(() => {
+      // Mock getAccessToken
+      nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
+        accessToken: 'test_access_token'
+      })
+    })
+    it('should return file download url', async () => {
+      const mockResponse = {
+        fileDownloadUrl: 'https://download.cloud.189.cn/file/downloadFile.action'
+      }
+
+      nock(API_URL).get('/open/file/getFileDownloadUrl.action').query(true).reply(200, mockResponse)
+
+      const result = await cloudClient.getFileDownloadUrl({
+        fileId: '1234'
+      })
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should return family file download url', async () => {
+      const mockResponse = {
+        fileDownloadUrl: 'https://download.cloud.189.cn/file/downloadFile.action'
+      }
+
+      nock(API_URL)
+        .get('/open/family/file/getFileDownloadUrl.action')
+        .query(true)
+        .reply(200, mockResponse)
+
+      const result = await cloudClient.getFileDownloadUrl({
+        fileId: '1234',
+        familyId: '1234'
+      })
+      expect(result).to.deep.equal(mockResponse)
+    })
+  })
+
+  describe('createBatchTask', () => {
+    beforeEach(() => {
+      // Mock getAccessToken
+      nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
+        accessToken: 'test_access_token'
+      })
+    })
+    it('should return createBatchTask success', async () => {
+      const mockResponse = { successedFileIdList: [1234], taskId: '1', taskStatus: 4 }
+
+      nock(API_URL).post('/open/batch/createBatchTask.action').reply(200, {
+        taskId: '1'
+      })
+      nock(API_URL).post('/open/batch/checkBatchTask.action').reply(200, mockResponse)
+
+      const result = await cloudClient.createBatchTask({
+        type: 'COPY',
+        taskInfos: [
+          {
+            fileId: '1111',
+            isFolder: 1
+          }
+        ]
+      })
       expect(result).to.deep.equal(mockResponse)
     })
   })
@@ -346,6 +412,6 @@ describe('CloudClient session', () => {
       token: store
     })
 
-    await cloudClient.familyUserSign(1)
+    await cloudClient.familyUserSign('1')
   })
 })

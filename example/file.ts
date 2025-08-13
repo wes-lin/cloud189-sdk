@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
-export const createFolderTest = async (client: CloudClient, params: { familyId: string }) => {
+const createFolderTest = async (client: CloudClient, params: { familyId: string }) => {
   const res = await Promise.all([
     client.createFolder({
       parentFolderId: '',
@@ -18,7 +18,7 @@ export const createFolderTest = async (client: CloudClient, params: { familyId: 
   return res
 }
 
-export const renameFolderTest = async (
+const renameFolderTest = async (
   client: CloudClient,
   params: {
     personFolderId: string
@@ -44,7 +44,7 @@ export const renameFolderTest = async (
   return res
 }
 
-export const uploadFileTest = async (
+const uploadFileTest = async (
   client: CloudClient,
   params: { filePath: string; personFolderId: string; familyFolderId: string; familyId: string }
 ) => {
@@ -95,7 +95,7 @@ export const uploadFileTest = async (
   return await Promise.all(uploadTasks)
 }
 
-export const listFilesTest = async (
+const listFilesTest = async (
   client: CloudClient,
   params: {
     personFolderId: string
@@ -116,7 +116,7 @@ export const listFilesTest = async (
   ])
 }
 
-export const getFileDownloadUrlTest = async (
+const getFileDownloadUrlTest = async (
   client: CloudClient,
   params: {
     personFileId: string
@@ -133,4 +133,69 @@ export const getFileDownloadUrlTest = async (
       familyId: params.familyId
     })
   ])
+}
+
+export default async (client: CloudClient, params: { familyId: string }) => {
+  const { familyId } = params
+  console.log('======= createFolderTest start=======')
+  const createFolderRes = await createFolderTest(client, {
+    familyId
+  })
+  const familyFolderName = createFolderRes[0].name
+  const familyFolderId = createFolderRes[0].id
+  const familyParentFolderId = createFolderRes[0].parentId
+  const personFolderName = createFolderRes[0].name
+  const personFolderId = createFolderRes[1].id
+  const personParentFolderId = createFolderRes[1].parentId
+  const renameFolderRes = await renameFolderTest(client, {
+    familyId,
+    familyFolderId,
+    familyParentFolderId,
+    personFolderId,
+    personFolderName,
+    personParentFolderId,
+    familyFolderName
+  })
+  console.log(renameFolderRes)
+  console.log('======= createFolderTest end=======')
+
+  console.log('======= uploadFileTest start=======')
+  const uploadRes = await uploadFileTest(client, {
+    filePath: '.temp',
+    familyId,
+    familyFolderId,
+    personFolderId
+  })
+  console.log(uploadRes)
+  console.log('======= uploadFileTest end=======')
+
+  console.log('======= listFilesTest start=======')
+  const listFileRes = await listFilesTest(client, {
+    familyId,
+    familyFolderId,
+    personFolderId
+  })
+  console.log(listFileRes)
+  console.log('======= listFilesTest end=======')
+
+  console.log('======= getFileDownloadUrlTest start=======')
+  const familyFileId = listFileRes[0].fileListAO.fileList[0].id
+  const personFileId = listFileRes[1].fileListAO.fileList[0].id
+  const downloadUrlRes = await getFileDownloadUrlTest(client, {
+    familyFileId,
+    personFileId,
+    familyId
+  })
+  console.log(downloadUrlRes)
+  console.log('======= getFileDownloadUrlTest end=======')
+  return {
+    familyFolderId,
+    familyFolderName,
+    familyParentFolderId,
+    familyFileId,
+    personFolderId,
+    personFolderName,
+    personFileId,
+    personParentFolderId
+  }
 }

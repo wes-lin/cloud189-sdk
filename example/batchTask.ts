@@ -1,6 +1,6 @@
 import { CloudClient } from '../src'
 
-export const createBatchTaskTest = async (
+export default async (
   client: CloudClient,
   params: {
     personFolderId: string
