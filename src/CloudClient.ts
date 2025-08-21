@@ -698,6 +698,7 @@ export class CloudClient {
     const sliceSize = partSize(size)
     const { fileMd5, chunkMd5s } = await calculateFileAndChunkMD5(filePath, sliceSize)
     if (chunkMd5s.length === 1) {
+      logger.debug('single file upload')
       return this.#singleUpload(
         {
           parentFolderId,
@@ -711,6 +712,7 @@ export class CloudClient {
         callbacks
       )
     } else {
+      logger.debug('multi file upload')
       return this.#multiUpload(
         {
           parentFolderId,

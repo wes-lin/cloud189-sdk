@@ -1,6 +1,8 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import nock from 'nock'
+import fs from 'fs'
+import path from 'path'
 import { CloudClient } from '../src'
 import { MemoryStore } from '../src/store'
 import {
@@ -9,8 +11,9 @@ import {
   FamilyListResponse,
   FamilyUserSignResponse
 } from '../src/types'
-import { WEB_URL, API_URL, AUTH_URL, ReturnURL } from '../src/const'
+import { WEB_URL, API_URL, AUTH_URL, ReturnURL, UPLOAD_URL } from '../src/const'
 import { logger } from '../src/log'
+import * as util from '../src/util'
 
 describe('CloudClient', () => {
   let cloudClient: CloudClient
@@ -37,6 +40,11 @@ describe('CloudClient', () => {
 
     // Mock getSessionKey
     nock(API_URL).post('/getSessionForPC.action').query(true).reply(200, mockSession)
+
+    // Mock getAccessToken
+    nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
+      accessToken: 'test_access_token'
+    })
   })
 
   afterEach(() => {
@@ -98,23 +106,12 @@ describe('CloudClient', () => {
 
       nock(API_URL).get('/open/family/manage/getFamilyList.action').reply(200, mockResponse)
 
-      // Mock getAccessToken
-      nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
-        accessToken: 'test_access_token'
-      })
-
       const result = await cloudClient.getFamilyList()
       expect(result).to.deep.equal(mockResponse)
     })
   })
 
   describe('getFileDownloadUrl', () => {
-    beforeEach(() => {
-      // Mock getAccessToken
-      nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
-        accessToken: 'test_access_token'
-      })
-    })
     it('should return file download url', async () => {
       const mockResponse = {
         fileDownloadUrl: 'https://download.cloud.189.cn/file/downloadFile.action'
@@ -147,12 +144,6 @@ describe('CloudClient', () => {
   })
 
   describe('createBatchTask', () => {
-    beforeEach(() => {
-      // Mock getAccessToken
-      nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
-        accessToken: 'test_access_token'
-      })
-    })
     it('should return createBatchTask success', async () => {
       const mockResponse = { successedFileIdList: [1234], taskId: '1', taskStatus: 4 }
 
@@ -171,6 +162,59 @@ describe('CloudClient', () => {
         ]
       })
       expect(result).to.deep.equal(mockResponse)
+    })
+  })
+
+  describe('uploadFile', () => {
+    let fsStatStub: sinon.SinonStub
+    let calculateMD5Stub: sinon.SinonStub
+    let singleUploadStub: sinon.SinonStub
+    let multiUploadStub: sinon.SinonStub
+    let pathBasenameStub: sinon.SinonStub
+    beforeEach(() => {
+      fsStatStub = sinon.stub(fs.promises, 'stat')
+      calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
+      // singleUploadStub = sinon.stub(uploadInstance, '#singleUpload' as any)
+      // multiUploadStub = sinon.stub(uploadInstance, '#multiUpload' as any)
+      pathBasenameStub = sinon.stub(path, 'basename')
+      nock(WEB_URL).get('/api/security/generateRsaKey.action').query(true).reply(200, {
+        res_code: 0,
+        res_message: '成功',
+        expire: 1755803745884,
+        pkId: 'ce97e7b9e67040028fe756e2d2d18453',
+        pubKey:
+          'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDC72L803mNmrQgyvaUt115S5gSHuDcS+nGdqBakHYqFShEwrEaqKsr2Z/7DQt9AobB0ne2vISUW0tXjhgf5vfl00kT7K+J4j+t3WLkQ6Zwc9KtZHkSW6/fkFSC1EnShPYLsG6rHYa5+wfefOY2P7yEFRsd5DGCqHNWkzOZclsXawIDAQAB',
+        ver: '2'
+      })
+    })
+    afterEach(() => {
+      sinon.restore()
+    })
+    it('singleUpload', async () => {
+      const mockFilePath = '/path/to/file.txt'
+      const mockFileName = 'file.txt'
+      const mockFileSize = 1024
+      const mockSliceSize = 512
+      const mockFileMd5 = 'file-md5-hash'
+      const mockChunkMd5s = ['file-md5-hash']
+
+      fsStatStub.resolves({ size: mockFileSize })
+      calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+      pathBasenameStub.returns(mockFileName)
+      nock(UPLOAD_URL)
+        .get('/person/initMultiUpload')
+        .query(true)
+        .reply(200, {
+          data: {
+            uploadFileId: '1234',
+            fileDataExists: 1
+          }
+        })
+      const res = await cloudClient.upload({
+        parentFolderId: '',
+        filePath: mockFilePath
+      })
+      console.log(res)
     })
   })
 })
