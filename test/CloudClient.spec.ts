@@ -1,10 +1,9 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import nock from 'nock'
-import fs from 'fs'
+import fs, { BigIntStats } from 'fs'
 import path from 'path'
-import { CloudClient } from '../src'
-import { MemoryStore } from '../src/store'
+import { CloudClient, MemoryStore, logger } from '../src'
 import {
   UserSizeInfoResponse,
   UserSignResponse,
@@ -12,7 +11,6 @@ import {
   FamilyUserSignResponse
 } from '../src/types'
 import { WEB_URL, API_URL, AUTH_URL, ReturnURL, UPLOAD_URL } from '../src/const'
-import { logger } from '../src/log'
 import * as util from '../src/util'
 
 describe('CloudClient', () => {
@@ -32,6 +30,50 @@ describe('CloudClient', () => {
       expiresIn: Date.now() + 3600000 // 1 hour later
     })
 
+    const mockStats: BigIntStats = {
+      size: BigInt(1024),
+      isDirectory: () => false,
+      isFile: () => true,
+      atimeNs: BigInt(0),
+      mtimeNs: BigInt(0),
+      ctimeNs: BigInt(0),
+      birthtimeNs: BigInt(0),
+      isBlockDevice: function (): boolean {
+        throw new Error('Function not implemented.')
+      },
+      isCharacterDevice: function (): boolean {
+        throw new Error('Function not implemented.')
+      },
+      isSymbolicLink: function (): boolean {
+        throw new Error('Function not implemented.')
+      },
+      isFIFO: function (): boolean {
+        throw new Error('Function not implemented.')
+      },
+      isSocket: function (): boolean {
+        throw new Error('Function not implemented.')
+      },
+      dev: BigInt(0),
+      ino: BigInt(0),
+      mode: BigInt(0),
+      nlink: BigInt(0),
+      uid: BigInt(0),
+      gid: BigInt(0),
+      rdev: BigInt(0),
+      blksize: BigInt(0),
+      blocks: BigInt(0),
+      atimeMs: BigInt(0),
+      mtimeMs: BigInt(0),
+      ctimeMs: BigInt(0),
+      birthtimeMs: BigInt(0),
+      atime: new Date(),
+      mtime: new Date(),
+      ctime: new Date(),
+      birthtime: new Date()
+    }
+
+    sinon.stub(fs.promises, 'stat').resolves(mockStats)
+
     cloudClient = new CloudClient({
       username: 'test_user',
       password: 'test_pass',
@@ -44,6 +86,17 @@ describe('CloudClient', () => {
     // Mock getAccessToken
     nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
       accessToken: 'test_access_token'
+    })
+
+    // Mock getRsaKey
+    nock(WEB_URL).get('/api/security/generateRsaKey.action').query(true).reply(200, {
+      res_code: 0,
+      res_message: '成功',
+      expire: 1755803745884,
+      pkId: 'ce97e7b9e67040028fe756e2d2d18453',
+      pubKey:
+        'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDC72L803mNmrQgyvaUt115S5gSHuDcS+nGdqBakHYqFShEwrEaqKsr2Z/7DQt9AobB0ne2vISUW0tXjhgf5vfl00kT7K+J4j+t3WLkQ6Zwc9KtZHkSW6/fkFSC1EnShPYLsG6rHYa5+wfefOY2P7yEFRsd5DGCqHNWkzOZclsXawIDAQAB',
+      ver: '2'
     })
   })
 
@@ -165,42 +218,42 @@ describe('CloudClient', () => {
     })
   })
 
-  describe('uploadFile', () => {
-    let fsStatStub: sinon.SinonStub
-    let calculateMD5Stub: sinon.SinonStub
+  describe('uploadFile', async () => {
+    let calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
     let singleUploadStub: sinon.SinonStub
     let multiUploadStub: sinon.SinonStub
-    let pathBasenameStub: sinon.SinonStub
-    beforeEach(() => {
-      fsStatStub = sinon.stub(fs.promises, 'stat')
-      calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
-      // singleUploadStub = sinon.stub(uploadInstance, '#singleUpload' as any)
-      // multiUploadStub = sinon.stub(uploadInstance, '#multiUpload' as any)
-      pathBasenameStub = sinon.stub(path, 'basename')
-      nock(WEB_URL).get('/api/security/generateRsaKey.action').query(true).reply(200, {
-        res_code: 0,
-        res_message: '成功',
-        expire: 1755803745884,
-        pkId: 'ce97e7b9e67040028fe756e2d2d18453',
-        pubKey:
-          'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDC72L803mNmrQgyvaUt115S5gSHuDcS+nGdqBakHYqFShEwrEaqKsr2Z/7DQt9AobB0ne2vISUW0tXjhgf5vfl00kT7K+J4j+t3WLkQ6Zwc9KtZHkSW6/fkFSC1EnShPYLsG6rHYa5+wfefOY2P7yEFRsd5DGCqHNWkzOZclsXawIDAQAB',
-        ver: '2'
-      })
-    })
-    afterEach(() => {
-      sinon.restore()
-    })
-    it('singleUpload', async () => {
-      const mockFilePath = '/path/to/file.txt'
-      const mockFileName = 'file.txt'
-      const mockFileSize = 1024
-      const mockSliceSize = 512
-      const mockFileMd5 = 'file-md5-hash'
-      const mockChunkMd5s = ['file-md5-hash']
+    let pathBasenameStub = sinon.stub(path, 'basename')
+    // beforeEach(() => {
+    //   fsStatStub = sinon.stub(fs.promises, 'stat')
+    //   calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
+    //   // singleUploadStub = sinon.stub(uploadInstance, '#singleUpload' as any)
+    //   // multiUploadStub = sinon.stub(uploadInstance, '#multiUpload' as any)
+    //   pathBasenameStub = sinon.stub(path, 'basename')
+    // })
+    // afterEach(() => {
+    //   sinon.restore()
+    // })
+    // it('singleUpload', async () => {
+    const mockFilePath = '/path/to/file.txt'
+    const mockFileName = 'file.txt'
+    const mockSliceSize = 512
+    const mockFileMd5 = 'file-md5-hash'
+    const mockChunkMd5s = ['file-md5-hash']
 
-      fsStatStub.resolves({ size: mockFileSize })
-      calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
-      pathBasenameStub.returns(mockFileName)
+    // fsStatStub.resolves(mockStats)
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+    pathBasenameStub.returns(mockFileName)
+    nock(UPLOAD_URL)
+      .get('/person/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: '1234',
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+    it('fast upload', async () => {
       nock(UPLOAD_URL)
         .get('/person/initMultiUpload')
         .query(true)
@@ -215,8 +268,10 @@ describe('CloudClient', () => {
         filePath: mockFilePath
       })
       console.log(res)
+      expect(sinon.spy(fs.promises, 'open').called).to.be.true
     })
   })
+  // })
 })
 
 describe('CloudClient valid', () => {
