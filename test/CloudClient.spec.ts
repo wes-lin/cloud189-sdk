@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import nock from 'nock'
-import fs, { BigIntStats } from 'fs'
+import fs from 'fs'
 import path from 'path'
 import { CloudClient, MemoryStore, logger } from '../src'
 import {
@@ -12,6 +12,10 @@ import {
 } from '../src/types'
 import { WEB_URL, API_URL, AUTH_URL, ReturnURL, UPLOAD_URL } from '../src/const'
 import * as util from '../src/util'
+
+logger.configure({
+  isDebugEnabled: true
+})
 
 describe('CloudClient', () => {
   let cloudClient: CloudClient
@@ -30,50 +34,6 @@ describe('CloudClient', () => {
       expiresIn: Date.now() + 3600000 // 1 hour later
     })
 
-    const mockStats: BigIntStats = {
-      size: BigInt(1024),
-      isDirectory: () => false,
-      isFile: () => true,
-      atimeNs: BigInt(0),
-      mtimeNs: BigInt(0),
-      ctimeNs: BigInt(0),
-      birthtimeNs: BigInt(0),
-      isBlockDevice: function (): boolean {
-        throw new Error('Function not implemented.')
-      },
-      isCharacterDevice: function (): boolean {
-        throw new Error('Function not implemented.')
-      },
-      isSymbolicLink: function (): boolean {
-        throw new Error('Function not implemented.')
-      },
-      isFIFO: function (): boolean {
-        throw new Error('Function not implemented.')
-      },
-      isSocket: function (): boolean {
-        throw new Error('Function not implemented.')
-      },
-      dev: BigInt(0),
-      ino: BigInt(0),
-      mode: BigInt(0),
-      nlink: BigInt(0),
-      uid: BigInt(0),
-      gid: BigInt(0),
-      rdev: BigInt(0),
-      blksize: BigInt(0),
-      blocks: BigInt(0),
-      atimeMs: BigInt(0),
-      mtimeMs: BigInt(0),
-      ctimeMs: BigInt(0),
-      birthtimeMs: BigInt(0),
-      atime: new Date(),
-      mtime: new Date(),
-      ctime: new Date(),
-      birthtime: new Date()
-    }
-
-    sinon.stub(fs.promises, 'stat').resolves(mockStats)
-
     cloudClient = new CloudClient({
       username: 'test_user',
       password: 'test_pass',
@@ -86,17 +46,6 @@ describe('CloudClient', () => {
     // Mock getAccessToken
     nock(WEB_URL).get('/api/open/oauth2/getAccessTokenBySsKey.action').query(true).reply(200, {
       accessToken: 'test_access_token'
-    })
-
-    // Mock getRsaKey
-    nock(WEB_URL).get('/api/security/generateRsaKey.action').query(true).reply(200, {
-      res_code: 0,
-      res_message: '成功',
-      expire: 1755803745884,
-      pkId: 'ce97e7b9e67040028fe756e2d2d18453',
-      pubKey:
-        'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDC72L803mNmrQgyvaUt115S5gSHuDcS+nGdqBakHYqFShEwrEaqKsr2Z/7DQt9AobB0ne2vISUW0tXjhgf5vfl00kT7K+J4j+t3WLkQ6Zwc9KtZHkSW6/fkFSC1EnShPYLsG6rHYa5+wfefOY2P7yEFRsd5DGCqHNWkzOZclsXawIDAQAB',
-      ver: '2'
     })
   })
 
@@ -217,61 +166,6 @@ describe('CloudClient', () => {
       expect(result).to.deep.equal(mockResponse)
     })
   })
-
-  describe('uploadFile', async () => {
-    let calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
-    let singleUploadStub: sinon.SinonStub
-    let multiUploadStub: sinon.SinonStub
-    let pathBasenameStub = sinon.stub(path, 'basename')
-    // beforeEach(() => {
-    //   fsStatStub = sinon.stub(fs.promises, 'stat')
-    //   calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
-    //   // singleUploadStub = sinon.stub(uploadInstance, '#singleUpload' as any)
-    //   // multiUploadStub = sinon.stub(uploadInstance, '#multiUpload' as any)
-    //   pathBasenameStub = sinon.stub(path, 'basename')
-    // })
-    // afterEach(() => {
-    //   sinon.restore()
-    // })
-    // it('singleUpload', async () => {
-    const mockFilePath = '/path/to/file.txt'
-    const mockFileName = 'file.txt'
-    const mockSliceSize = 512
-    const mockFileMd5 = 'file-md5-hash'
-    const mockChunkMd5s = ['file-md5-hash']
-
-    // fsStatStub.resolves(mockStats)
-    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
-    pathBasenameStub.returns(mockFileName)
-    nock(UPLOAD_URL)
-      .get('/person/commitMultiUploadFile')
-      .query(true)
-      .reply(200, {
-        file: {
-          userFileId: '1234',
-          fileMd5: mockFileMd5,
-          fileName: mockFileName
-        }
-      })
-    it('fast upload', async () => {
-      nock(UPLOAD_URL)
-        .get('/person/initMultiUpload')
-        .query(true)
-        .reply(200, {
-          data: {
-            uploadFileId: '1234',
-            fileDataExists: 1
-          }
-        })
-      const res = await cloudClient.upload({
-        parentFolderId: '',
-        filePath: mockFilePath
-      })
-      console.log(res)
-      expect(sinon.spy(fs.promises, 'open').called).to.be.true
-    })
-  })
-  // })
 })
 
 describe('CloudClient valid', () => {
@@ -294,9 +188,6 @@ describe('CloudClient valid', () => {
 })
 
 describe('CloudClient session', () => {
-  logger.configure({
-    isDebugEnabled: true
-  })
 
   it('Get Session', async () => {
     let count = 0
@@ -428,6 +319,19 @@ describe('CloudClient session', () => {
     await cloudClient.getSession()
   })
 
+  it('Get Session fail', async () => {
+    const cloudClient = new CloudClient({
+      username: 'test_user',
+      password: 'test_pass',
+    })
+    try {
+      await cloudClient.getSession()
+    } catch(error) {
+      expect(error.message).to.include('Can not get session')
+    }
+   
+  })
+
   it('Refresh InvalidSessionKey', async () => {
     const responses = [{ sessionKey: 'InvalidSessionKey' }, { sessionKey: 'SessionKey' }]
     nock(API_URL)
@@ -512,5 +416,824 @@ describe('CloudClient session', () => {
     })
 
     await cloudClient.familyUserSign('1')
+  })
+  
+})
+
+
+it('get Session with sso username', async () => {
+    let count = 0
+    nock(API_URL)
+      .post('/getSessionForPC.action')
+      .times(4)
+      .query(true)
+      .reply(() => {
+        count++
+        if (count > 3) {
+          return [200, { sessionKey: 'SessionKey' }]
+        } else {
+          return [400]
+        }
+      })
+    nock(AUTH_URL)
+      .post('/api/oauth2/refreshToken.do')
+      .query(true)
+      .reply(200, { accessToken: 'accessToken', expiresIn: 10 })
+})
+
+describe('CloudClient upload', () => {
+  let fsStatStub: sinon.SinonStub
+  let calculateMD5Stub: sinon.SinonStub
+  let pathBasenameStub: sinon.SinonStub
+  let fsOpenStub: sinon.SinonStub
+  let partSizeStub: sinon.SinonStub
+  let cloudClient: CloudClient
+  
+  const mockFilePath = '/path/to/file.txt'
+  const mockFileName = 'file.txt'
+  const mockFileMd5 = 'file-md5-hash'
+  const mockChunkMd5s = ['file-md5-hash']
+  const mockUploadFileId = '1234567890'
+
+  const mockStats = {
+      size: 1024
+    }
+
+  beforeEach(() => {
+    fsStatStub = sinon.stub(fs.promises, 'stat').resolves(mockStats as any)
+    calculateMD5Stub = sinon.stub(util, 'calculateFileAndChunkMD5')
+    pathBasenameStub = sinon.stub(path, 'basename').returns(mockFileName)
+    fsOpenStub = sinon.stub(fs.promises, 'open')
+    partSizeStub = sinon.stub(util, 'partSize').returns(1024)
+        // Mock store
+    const store = new MemoryStore()
+    sinon.stub(store, 'get').resolves({
+      accessToken: 'stored_access_token',
+      refreshToken: 'stored_refresh_token',
+      expiresIn: Date.now() + 3600000 // 1 hour later
+    })
+
+    cloudClient = new CloudClient({
+      username: 'test_user',
+      password: 'test_pass',
+      token: store
+    })
+
+    const mockSession = {
+      sessionKey: 'test_session_key',
+      accessToken: 'test_access_token',
+      refreshToken: 'test_refresh_token'
+    }
+    // Mock getSessionKey
+    nock(API_URL).post('/getSessionForPC.action').query(true).reply(200, mockSession)
+    // Mock getRsaKey
+    nock(WEB_URL).get('/api/security/generateRsaKey.action').query(true).reply(200, {
+      res_code: 0,
+      res_message: '成功',
+      expire: new Date().getTime() + 1000,
+      pkId: 'ce97e7b9e67040028fe756e2d2d18453',
+      pubKey:
+        'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDC72L803mNmrQgyvaUt115S5gSHuDcS+nGdqBakHYqFShEwrEaqKsr2Z/7DQt9AobB0ne2vISUW0tXjhgf5vfl00kT7K+J4j+t3WLkQ6Zwc9KtZHkSW6/fkFSC1EnShPYLsG6rHYa5+wfefOY2P7yEFRsd5DGCqHNWkzOZclsXawIDAQAB',
+      ver: '2'
+    })
+  })
+
+  afterEach(() => {
+    sinon.restore()
+    nock.cleanAll()
+  })
+
+  it('should handle single file upload with fast upload (file exists)', async () => {
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+    
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId,
+          fileDataExists: 1
+        }
+      })
+    
+    nock(UPLOAD_URL)
+      .get('/person/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: mockUploadFileId,
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+
+    const result = await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath
+    })
+    
+    expect(result).to.have.property('file')
+    expect(result.file.fileMd5).to.equal(mockFileMd5)
+    expect(fsOpenStub.called).to.be.false // Should not open file for fast upload
+  })
+
+  it('should handle single file upload with actual upload (file does not exist)', async () => {
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+    
+    const mockFileHandle = {
+      read: sinon.stub().resolves({ bytesRead: 1024 }),
+      close: sinon.stub().resolves()
+    }
+    fsOpenStub.resolves(mockFileHandle as any)
+
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId,
+          fileDataExists: 0
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/getMultiUploadUrls')
+      .query(true)
+      .reply(200, {
+        uploadUrls: {
+          partNumber_1: {
+            requestURL: 'http://mock-upload-url',
+            requestHeader: 'Authorization=Bearer&Content-Type=application/octet-stream'
+          }
+        }
+      })
+
+    nock('http://mock-upload-url')
+      .put('/')
+      .reply(200)
+
+    nock(UPLOAD_URL)
+      .get('/person/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: mockUploadFileId,
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+
+    const result = await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath
+    })
+
+    expect(result).to.have.property('file')
+    expect(result.file.fileMd5).to.equal(mockFileMd5)
+    expect(fsOpenStub.calledOnce).to.be.true
+    expect(mockFileHandle.close.calledOnce).to.be.true
+  })
+
+  it('should handle multi-part upload with fast upload', async () => {
+    const largeFileStats = { ...mockStats, size: 20480 }
+    fsStatStub.resolves(largeFileStats)
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: [mockFileMd5, 'chunk2-md5'] })
+
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/checkTransSecond')
+      .query(true)
+      .reply(200, {
+        data: {
+          fileDataExists: 1
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: mockUploadFileId,
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+
+    const onProgressSpy = sinon.spy()
+    const onCompleteSpy = sinon.spy()
+
+    const result = await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath
+    },{
+      onProgress: onProgressSpy,
+      onComplete: onCompleteSpy
+    })
+
+    expect(result).to.have.property('file')
+    expect(result.file.fileMd5).to.equal(mockFileMd5)
+    expect(fsOpenStub.called).to.be.false
+    expect(onProgressSpy.calledWith(100)).to.be.true
+    expect(onCompleteSpy.called).to.be.true
+  })
+
+  it('should handle multi-part upload with actual upload', async () => {
+    const largeFileStats = { ...mockStats, size:20480 }
+    fsStatStub.resolves(largeFileStats)
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: [mockFileMd5, 'chunk2-md5'] })
+
+    const mockFileHandle = {
+      read: sinon.stub().resolves({ bytesRead: 1024 }),
+      close: sinon.stub().resolves()
+    }
+    fsOpenStub.resolves(mockFileHandle as any)
+
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/checkTransSecond')
+      .query(true)
+      .reply(200, {
+        data: {
+          fileDataExists: 0
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/getMultiUploadUrls')
+      .query(true)
+      .times(2)
+      .reply(200, {
+        uploadUrls: {
+          partNumber_1: {
+            requestURL: 'http://mock-upload-url-1',
+            requestHeader: 'Authorization=Bearer&Content-Type=application/octet-stream'
+          },
+          partNumber_2: {
+            requestURL: 'http://mock-upload-url-2', 
+            requestHeader: 'Authorization=Bearer&Content-Type=application/octet-stream'
+          }
+        }
+      })
+
+    nock('http://mock-upload-url-1')
+      .put('/')
+      .reply(200)
+
+    nock('http://mock-upload-url-2')
+      .put('/')
+      .reply(200)
+
+    nock(UPLOAD_URL)
+      .get('/person/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: mockUploadFileId,
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+
+   const onProgressSpy = sinon.spy()
+
+    const result = await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath
+    },{
+      onProgress: onProgressSpy,
+    })
+
+    expect(result).to.have.property('file')
+    expect(result.file.fileMd5).to.equal(mockFileMd5)
+    expect(fsOpenStub.calledOnce).to.be.true
+    expect(mockFileHandle.close.calledOnce).to.be.true
+    expect(onProgressSpy.calledWith(100)).to.be.true
+  })
+
+  it('should handle family upload', async () => {
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+
+    nock(UPLOAD_URL)
+      .get('/family/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId,
+          fileDataExists: 1
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/family/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: mockUploadFileId,
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+
+    const result = await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath,
+      familyId: '123'
+    })
+
+    expect(result).to.have.property('file')
+    expect(result.file.fileMd5).to.equal(mockFileMd5)
+  })
+
+  it('should handle upload progress callbacks', async () => {
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+    
+    const onProgressSpy = sinon.spy()
+    const onCompleteSpy = sinon.spy()
+
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId,
+          fileDataExists: 1
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/commitMultiUploadFile')
+      .query(true)
+      .reply(200, {
+        file: {
+          userFileId: mockUploadFileId,
+          fileMd5: mockFileMd5,
+          fileName: mockFileName
+        }
+      })
+
+    await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath
+    }, {
+      onProgress: onProgressSpy,
+      onComplete: onCompleteSpy
+    })
+
+    expect(onProgressSpy.calledWith(100)).to.be.true
+    expect(onCompleteSpy.calledOnce).to.be.true
+  })
+
+  it('should handle upload error callbacks', async () => {
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+    
+    const onErrorSpy = sinon.spy()
+
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(500, 'Internal Server Error')
+
+    try {
+      await cloudClient.upload({
+        parentFolderId: '',
+        filePath: mockFilePath
+      }, {
+        onError: onErrorSpy
+      })
+    } catch (error) {
+      expect(onErrorSpy.calledOnce).to.be.true
+    }
+  })
+
+   it('should handle part upload error callbacks ', async () => {
+    calculateMD5Stub.resolves({ fileMd5: mockFileMd5, chunkMd5s: mockChunkMd5s })
+    
+    const mockFileHandle = {
+      read: sinon.stub().resolves({ bytesRead: 1024 }),
+      close: sinon.stub().resolves()
+    }
+    fsOpenStub.resolves(mockFileHandle as any)
+
+    nock(UPLOAD_URL)
+      .get('/person/initMultiUpload')
+      .query(true)
+      .reply(200, {
+        data: {
+          uploadFileId: mockUploadFileId,
+          fileDataExists: 0
+        }
+      })
+
+    nock(UPLOAD_URL)
+      .get('/person/getMultiUploadUrls')
+      .query(true)
+      .reply(500, 'Internal Server Error')
+
+    const onErrorSpy = sinon.spy()
+    
+    try {
+    await cloudClient.upload({
+      parentFolderId: '',
+      filePath: mockFilePath
+    }, {
+        onError: onErrorSpy
+    })
+    } catch (error) {
+      expect(onErrorSpy.calledOnce).to.be.true
+    }
+  })
+
+  it('should handle file stat error', async () => {
+    fsStatStub.rejects(new Error('ENOENT: no such file or directory'))
+
+    try {
+      await cloudClient.upload({
+        parentFolderId: '',
+        filePath: mockFilePath
+      })
+      expect.fail('Should have thrown an error')
+    } catch (error) {
+      expect(error.message).to.include('ENOENT')
+    }
+  })
+
+  it('should handle MD5 calculation error', async () => {
+    calculateMD5Stub.rejects(new Error('MD5 calculation failed'))
+
+    try {
+      await cloudClient.upload({
+        parentFolderId: '',
+        filePath: mockFilePath
+      })
+      expect.fail('Should have thrown an error')
+    } catch (error) {
+      expect(error.message).to.include('MD5 calculation failed')
+    }
+  })
+})
+
+describe('CloudClient file operations', () => {
+  let cloudClient: CloudClient
+  let store: MemoryStore
+
+  beforeEach(() => {
+    store = new MemoryStore()
+    store.update({
+      accessToken: 'test_access_token',
+      expiresIn: Date.now() + 3600000 // 1 hour later
+    })
+    
+    cloudClient = new CloudClient({
+      username: 'test_user',
+      password: 'test_pass',
+      token: store
+    })
+
+    nock(API_URL)
+      .post('/getSessionForPC.action')
+      .query(true)
+      .reply(200, { sessionKey: 'test_session_key' })
+
+    nock(WEB_URL)
+      .get('/api/open/oauth2/getAccessTokenBySsKey.action')
+      .query(true)
+      .reply(200, { accessToken: 'test_access_token' })
+  })
+
+  afterEach(() => {
+    nock.cleanAll()
+  })
+
+  describe('getListFiles', () => {
+    it('should get personal files with default parameters', async () => {
+      const mockResponse = {
+        fileListAO: {
+          fileList: [
+            {
+              id: '123',
+              name: 'test.txt',
+              size: 1024,
+              createDate: '2025-01-01',
+              lastOpTime: '2025-01-01'
+            }
+          ],
+          folderList: [
+            {
+              id: '456',
+              name: 'test_folder',
+              createDate: '2025-01-01',
+              lastOpTime: '2025-01-01'
+            }
+          ],
+          count: 2
+        }
+      }
+
+      nock(API_URL)
+        .get('/open/file/listFiles.action')
+        .query({
+          pageNum: '1',
+          pageSize: '60',
+          mediaType: '0',
+          orderBy: '3',
+          descending: 'true',
+          folderId: '',
+          iconOption: '5'
+        })
+        .reply(200, mockResponse)
+
+      const result = await cloudClient.getListFiles()
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should get personal files with custom parameters', async () => {
+      const customQuery = {
+        pageNum: 2,
+        pageSize: 30,
+        folderId: '789'
+      }
+
+      const mockResponse = {
+        fileListAO: {
+          fileList: [],
+          folderList: [],
+          count: 0
+        }
+      }
+
+      nock(API_URL)
+        .get('/open/file/listFiles.action')
+        .query({
+          pageNum: '2',
+          pageSize: '30',
+          mediaType: '0',
+          orderBy: '3',
+          descending: 'true',
+          folderId: '789',
+          iconOption: '5'
+        })
+        .reply(200, mockResponse)
+
+      const result = await cloudClient.getListFiles(customQuery)
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should get family files', async () => {
+      const familyId = '12345'
+      const mockResponse = {
+        fileListAO: {
+          fileList: [
+            {
+              id: '999',
+              name: 'family_file.pdf',
+              size: 2048,
+              createDate: '2025-01-01',
+              lastOpTime: '2025-01-01'
+            }
+          ],
+          folderList: [],
+          count: 1
+        }
+      }
+
+      nock(API_URL)
+        .get('/open/family/file/listFiles.action')
+        .query({
+          pageNum: '1',
+          pageSize: '60',
+          mediaType: '0',
+          orderBy: '3',
+          descending: 'true',
+          folderId: '',
+          iconOption: '5',
+          familyId: '12345'
+        })
+        .reply(200, mockResponse)
+
+      const result = await cloudClient.getListFiles(undefined, familyId)
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should get family files with custom parameters', async () => {
+      const customQuery = {
+        pageNum: 3,
+        folderId: 'family_folder_123'
+      }
+      const familyId = '67890'
+      const mockResponse = {
+        fileListAO: {
+          fileList: [],
+          folderList: [],
+          count: 0
+        }
+      }
+
+      nock(API_URL)
+        .get('/open/family/file/listFiles.action')
+        .query({
+          pageNum: '3',
+          pageSize: '60',
+          mediaType: '0',
+          orderBy: '3',
+          descending: 'true',
+          folderId: 'family_folder_123',
+          iconOption: '5',
+          familyId: '67890'
+        })
+        .reply(200, mockResponse)
+
+      const result = await cloudClient.getListFiles(customQuery, familyId)
+      expect(result).to.deep.equal(mockResponse)
+    })
+  })
+
+  describe('createFolder', () => {
+    it('should create personal folder', async () => {
+      const createRequest = {
+        folderName: 'New Folder',
+        parentFolderId: '0'
+      }
+
+      const mockResponse = {
+        id: '12345',
+        name: 'New Folder',
+        parentId: '0'
+      }
+
+      nock(API_URL)
+        .post('/open/file/createFolder.action')
+        .reply((uri, requestBody) => {
+          const formData = new URLSearchParams(requestBody as string)
+          expect(formData.get('folderName')).to.equal('New Folder')
+          expect(formData.get('parentFolderId')).to.equal('0')
+          return [200, mockResponse]
+        })
+
+      const result = await cloudClient.createFolder(createRequest)
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should create family folder', async () => {
+      const createRequest = {
+        folderName: 'Family Folder',
+        parentFolderId: '0',
+        familyId: '98765'
+      }
+
+      const mockResponse = {
+        id: '54321',
+        name: 'Family Folder',
+        parentId: '0'
+      }
+
+      nock(API_URL)
+        .post('/open/family/file/createFolder.action')
+        .reply((uri, requestBody) => {
+          const formData = new URLSearchParams(requestBody as string)
+          expect(formData.get('folderName')).to.equal('Family Folder')
+          expect(formData.get('parentFolderId')).to.equal('0')
+          expect(formData.get('familyId')).to.equal('98765')
+          return [200, mockResponse]
+        })
+
+      const result = await cloudClient.createFolder(createRequest)
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should handle create folder error', async () => {
+      const createRequest = {
+        folderName: 'Invalid Folder',
+        parentFolderId: '999'
+      }
+
+      nock(API_URL)
+        .post('/open/file/createFolder.action')
+        .reply(400, { errorCode: 'FolderCreateFailed', errorMsg: 'Invalid parent folder' })
+
+      try {
+        await cloudClient.createFolder(createRequest)
+        expect.fail('Should have thrown an error')
+      } catch (error) {
+        expect(error.response?.statusCode).to.equal(400)
+      }
+    })
+  })
+
+  describe('renameFolder', () => {
+    it('should rename personal folder', async () => {
+      const renameRequest = {
+        folderId: '12345',
+        folderName: 'Renamed Folder'
+      }
+
+      const mockResponse = { success: true }
+
+      nock(API_URL)
+        .post('/open/file/renameFolder.action')
+        .reply((uri, requestBody) => {
+          const formData = new URLSearchParams(requestBody as string)
+          expect(formData.get('destFolderName')).to.equal('Renamed Folder')
+          expect(formData.get('folderId')).to.equal('12345')
+          expect(formData.has('familyId')).to.be.false
+          return [200, mockResponse]
+        })
+
+      const result = await cloudClient.renameFolder(renameRequest)
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should rename family folder', async () => {
+      const renameRequest = {
+        folderId: '54321',
+        folderName: 'Renamed Family Folder',
+        familyId: '98765'
+      }
+
+      const mockResponse = { success: true }
+
+      nock(API_URL)
+        .post('/open/family/file/renameFolder.action')
+        .reply((uri, requestBody) => {
+          const formData = new URLSearchParams(requestBody as string)
+          expect(formData.get('destFolderName')).to.equal('Renamed Family Folder')
+          expect(formData.get('folderId')).to.equal('54321')
+          expect(formData.get('familyId')).to.equal('98765')
+          return [200, mockResponse]
+        })
+
+      const result = await cloudClient.renameFolder(renameRequest)
+      expect(result).to.deep.equal(mockResponse)
+    })
+
+    it('should handle rename folder error - folder not found', async () => {
+      const renameRequest = {
+        folderId: 'nonexistent',
+        folderName: 'New Name'
+      }
+
+      nock(API_URL)
+        .post('/open/file/renameFolder.action')
+        .reply(404, { errorCode: 'FolderNotFound', errorMsg: 'Folder does not exist' })
+
+      try {
+        await cloudClient.renameFolder(renameRequest)
+        expect.fail('Should have thrown an error')
+      } catch (error) {
+        expect(error.response?.statusCode).to.equal(404)
+      }
+    })
+
+    it('should handle rename folder error - invalid name', async () => {
+      const renameRequest = {
+        folderId: '12345',
+        folderName: '' // Invalid empty name
+      }
+
+      nock(API_URL)
+        .post('/open/file/renameFolder.action')
+        .reply(400, { errorCode: 'InvalidFolderName', errorMsg: 'Folder name cannot be empty' })
+
+      try {
+        await cloudClient.renameFolder(renameRequest)
+        expect.fail('Should have thrown an error')
+      } catch (error) {
+        expect(error.response?.statusCode).to.equal(400)
+      }
+    })
+
+    it('should handle rename folder error - duplicate name', async () => {
+      const renameRequest = {
+        folderId: '12345',
+        folderName: 'Existing Folder'
+      }
+
+      nock(API_URL)
+        .post('/open/file/renameFolder.action')
+        .reply(409, { errorCode: 'FolderNameExists', errorMsg: 'Folder name already exists' })
+
+      try {
+        await cloudClient.renameFolder(renameRequest)
+        expect.fail('Should have thrown an error')
+      } catch (error) {
+        expect(error.response?.statusCode).to.equal(409)
+      }
+    })
   })
 })

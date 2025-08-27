@@ -510,23 +510,16 @@ export class CloudClient {
     }, {})
     logger.debug(`Upload URL: ${requestURL}`)
     logger.debug(`Upload Headers: ${JSON.stringify(headers)}`)
-    try {
-      await got
-        .put(requestURL, {
-          headers,
-          body: buffer
-        })
-        .on('uploadProgress', (progress) => {
-          if (callbacks.onProgress) {
-            callbacks.onProgress((progress.transferred * 100) / progress.total)
-          }
-        })
-    } catch (e) {
-      if (callbacks.onError) {
-        callbacks.onError(e)
-      }
-      throw e
-    }
+    await got
+      .put(requestURL, {
+        headers,
+        body: buffer
+      })
+      .on('uploadProgress', (progress) => {
+        if (callbacks.onProgress) {
+          callbacks.onProgress((progress.transferred * 100) / progress.total)
+        }
+      })
   }
 
   /**
