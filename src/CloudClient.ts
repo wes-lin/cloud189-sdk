@@ -139,10 +139,17 @@ export class CloudClient {
   }
 
   #valid = (options: ConfigurationOptions) => {
-    if (!options.token && (!options.username || !options.password)) {
-      logger.error('valid')
-      throw new Error('Please provide username and password or token !')
+    if (options.ssonCookie) {
+      return
     }
+    if (options.token) {
+      return
+    }
+    if (options.username && options.password) {
+      return
+    }
+    logger.error('valid')
+    throw new Error('Please provide username and password or token or ssonCooike !')
   }
 
   async getSession() {
@@ -516,9 +523,7 @@ export class CloudClient {
         body: buffer
       })
       .on('uploadProgress', (progress) => {
-        if (callbacks.onProgress) {
-          callbacks.onProgress((progress.transferred * 100) / progress.total)
-        }
+        callbacks.onProgress?.((progress.transferred * 100) / progress.total)
       })
   }
 
@@ -563,9 +568,7 @@ export class CloudClient {
         )
       } else {
         logger.debug(`单文件 ${filePath} 秒传: ${uploadFileId}`)
-        if (callbacks.onProgress) {
-          callbacks.onProgress(100) // 秒传直接显示100%
-        }
+        callbacks.onProgress?.(100) // 秒传直接显示100%
       }
       const commitResult = await this.commitMultiUpload({
         fileMd5,
@@ -573,14 +576,10 @@ export class CloudClient {
         uploadFileId,
         familyId
       })
-      if (callbacks.onComplete) {
-        callbacks.onComplete(commitResult)
-      }
+      callbacks.onComplete?.(commitResult)
       return commitResult
     } catch (e) {
-      if (callbacks.onError) {
-        callbacks.onError(e)
-      }
+      callbacks.onError?.(e)
       throw e
     } finally {
       fd?.close()
@@ -650,9 +649,7 @@ export class CloudClient {
         })
       } else {
         logger.debug(`多块文件 ${filePath} 秒传: ${uploadFileId}`)
-        if (callbacks.onProgress) {
-          callbacks.onProgress(100) // 秒传直接显示100%
-        }
+        callbacks.onProgress?.(100) // 秒传直接显示100%
       }
       const commitResult = await this.commitMultiUpload({
         fileMd5,
@@ -661,14 +658,10 @@ export class CloudClient {
         lazyCheck: 1,
         familyId
       })
-      if (callbacks.onComplete) {
-        callbacks.onComplete(commitResult)
-      }
+      callbacks.onComplete?.(commitResult)
       return commitResult
     } catch (e) {
-      if (callbacks.onError) {
-        callbacks.onError(e)
-      }
+      callbacks.onError?.(e)
       throw e
     } finally {
       fd?.close()
@@ -782,18 +775,18 @@ export class CloudClient {
     createBatchTaskRequest: CreateBatchTaskRequest | CreateFamilyBatchTaskRequest
   ) {
     let form = {
-      ...(createBatchTaskRequest.targetFolderId
-        ? {
-            targetFolderId: createBatchTaskRequest.targetFolderId
-          }
-        : {}),
-      ...(this.#isFamily(createBatchTaskRequest)
-        ? {
-            familyId: createBatchTaskRequest.familyId
-          }
-        : {}),
       type: createBatchTaskRequest.type,
       taskInfos: JSON.stringify(createBatchTaskRequest.taskInfos)
+    }
+    if (createBatchTaskRequest.targetFolderId) {
+      form = Object.assign(form, {
+        targetFolderId: createBatchTaskRequest.targetFolderId
+      })
+    }
+    if (this.#isFamily(createBatchTaskRequest)) {
+      form = Object.assign(form, {
+        familyId: createBatchTaskRequest.familyId
+      })
     }
     logger.debug('createBatchTask:' + JSON.stringify(form))
     try {
