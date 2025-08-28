@@ -570,12 +570,15 @@ export class CloudClient {
         logger.debug(`单文件 ${filePath} 秒传: ${uploadFileId}`)
         callbacks.onProgress?.(100) // 秒传直接显示100%
       }
-      const commitResult = await this.commitMultiUpload({
-        fileMd5,
-        sliceMd5,
-        uploadFileId,
-        familyId
-      })
+      const commitResult = {
+        ...(await this.commitMultiUpload({
+          fileMd5,
+          sliceMd5,
+          uploadFileId,
+          familyId
+        })),
+        fileDataExists
+      }
       callbacks.onComplete?.(commitResult)
       return commitResult
     } catch (e) {
@@ -613,7 +616,8 @@ export class CloudClient {
       }
       // md5校验
       const checkRes = await this.checkTransSecond(checkTransSecondParams)
-      if (!checkRes.data.fileDataExists) {
+      const { fileDataExists } = checkRes.data
+      if (!fileDataExists) {
         fd = await fs.promises.open(filePath, 'r')
         const chunkCount = chunkMd5s.length
         const progressMap: {
@@ -651,13 +655,16 @@ export class CloudClient {
         logger.debug(`多块文件 ${filePath} 秒传: ${uploadFileId}`)
         callbacks.onProgress?.(100) // 秒传直接显示100%
       }
-      const commitResult = await this.commitMultiUpload({
-        fileMd5,
-        sliceMd5,
-        uploadFileId,
-        lazyCheck: 1,
-        familyId
-      })
+      const commitResult = {
+        ...(await this.commitMultiUpload({
+          fileMd5,
+          sliceMd5,
+          uploadFileId,
+          lazyCheck: 1,
+          familyId
+        })),
+        fileDataExists
+      }
       callbacks.onComplete?.(commitResult)
       return commitResult
     } catch (e) {
@@ -741,7 +748,7 @@ export class CloudClient {
           })
           .json<{ taskStatus: number; successedFileIdList: number[] }>()
         if (taskStatus === -1) {
-          logger.error('任务异常')
+          logger.error('创建任务异常')
           return {
             taskId,
             taskStatus
@@ -749,7 +756,7 @@ export class CloudClient {
         }
         //重名
         if (taskStatus === 2) {
-          logger.error('文件重名异常')
+          logger.error('文件重名任务异常')
           return {
             taskId,
             taskStatus
@@ -788,7 +795,6 @@ export class CloudClient {
         familyId: createBatchTaskRequest.familyId
       })
     }
-    logger.debug('createBatchTask:' + JSON.stringify(form))
     try {
       const { taskId } = await this.request
         .post(`${API_URL}/open/batch/createBatchTask.action`, {

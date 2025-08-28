@@ -447,6 +447,10 @@ export interface UploadCommitResponse extends UploadResponse {
     rev: number
     userId: number
   }
+  /**
+   * 是否快传
+   */
+  fileDataExists: number
 }
 
 export interface UploadPartsInfoResponse extends UploadResponse {

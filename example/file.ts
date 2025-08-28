@@ -62,7 +62,7 @@ const uploadFileTest = async (
           )
         },
         onComplete(response) {
-          console.log(`uploadFamily ${filePath} complete`)
+          console.log(`uploadFamily ${filePath} complete`, response)
         }
       }
     )
@@ -77,7 +77,7 @@ const uploadFileTest = async (
           console.log(`uploadPerson: ${filePath} ⬆️  transferred: ${process}`)
         },
         onComplete(response) {
-          console.log(`uploadPerson ${filePath} complete`)
+          console.log(`uploadPerson ${filePath} complete`, response)
         }
       }
     )
