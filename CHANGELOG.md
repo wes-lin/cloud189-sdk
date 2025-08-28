@@ -6,4 +6,4 @@
 
 ### Features
 
-- 添加文件管理API (close [#17](https://github.com/vuejs/vuepress/issues/17)) ([283e74f](https://github.com/vuejs/vuepress/commit/1118327)) [@Wes&nbsp;Lin](https://github.com/Evan You)
+- 添加文件管理API (close [#17](https://github.com/vuejs/vuepress/issues/17)) ([283e74f](https://github.com/vuejs/vuepress/commit/1118327)) [@Wes&nbsp;Lin](https://github.com/wes-lin)
