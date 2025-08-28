@@ -71,6 +71,7 @@ export interface FamilyUserSignResponse {
 
 /**
  * 文件类型
+ * @public
  */
 export enum MediaType {
   ALL,
@@ -81,6 +82,7 @@ export enum MediaType {
 }
 /**
  * 排序类型
+ * @public
  */
 export enum OrderByType {
   NAME = 1,
@@ -134,7 +136,7 @@ export interface FileListResponse {
 
   /**
    * 最后修订版本号
-   * @description 用于增量同步的时间戳或版本标识
+   * 用于增量同步的时间戳或版本标识
    */
   lastRev: number
 }
@@ -164,7 +166,7 @@ export interface FileItem {
 
   /**
    * 收藏标签
-   * @value 0-未收藏 | 1-已收藏
+   * 0-未收藏 | 1-已收藏
    */
   favoriteLabel: number
 
@@ -188,7 +190,7 @@ export interface FileItem {
 
   /**
    * 媒体类型
-   * @value 1-图片 | 2-视频 | 3-音频 | 4-文档
+   * 1-图片 | 2-视频 | 3-音频 | 4-文档
    */
   mediaType: number
 
@@ -197,7 +199,7 @@ export interface FileItem {
 
   /**
    * 图片方向
-   * @value 0-正常 | 1-90° | 2-180° | 3-270°
+   * 0-正常 | 1-90° | 2-180° | 3-270°
    */
   orientation: number
 
@@ -212,7 +214,7 @@ export interface FileItem {
 
   /**
    * 星标标签
-   * @value 1-普通 | 2-标星
+   * 1-普通 | 2-标星
    */
   starLabel: number
 }
@@ -245,17 +247,21 @@ export interface FolderItem {
 
   /**
    * 星标标签
-   * @value 1-普通 | 2-标星
+   * 1-普通 | 2-标星
    */
   starLabel: number
 }
 
+/**
+ * 家庭请求
+ * @public
+ */
 export interface FamilyRequest {
   familyId: string
 }
 
 /**
- * 创建文件夹
+ * 创建个人文件夹
  * @public
  */
 export interface CreateFolderRequest {
@@ -263,20 +269,40 @@ export interface CreateFolderRequest {
   folderName: string
 }
 
+/**
+ * 创建家庭文件夹
+ * @public
+ */
 export interface CreateFamilyFolderRequest extends FamilyRequest, CreateFolderRequest {}
 
+/**
+ * 创建个人文件夹
+ * @public
+ */
 export interface RenameFolderRequest {
   folderId: string
   folderName: string
 }
 
+/**
+ * 创建家庭文件夹
+ * @public
+ */
 export interface RenameFamilyFolderRequest extends FamilyRequest, RenameFolderRequest {}
 
+/**
+ * RsaKey响应
+ * @public
+ */
 export interface RsaKeyResponse extends RsaKey {
   res_code: number
   res_message: string
 }
 
+/**
+ * 初始化个人上传请求
+ * @public
+ */
 export interface initMultiUploadRequest {
   parentFolderId: string
   fileName: string
@@ -286,8 +312,16 @@ export interface initMultiUploadRequest {
   sliceMd5?: string
 }
 
+/**
+ * 初始化家庭上传请求
+ * @public
+ */
 export interface initMultiFamilyUploadRequest extends FamilyRequest, initMultiUploadRequest {}
 
+/**
+ * 提交个人上传请求
+ * @public
+ */
 export interface CommitMultiUploadRequest {
   fileMd5: string
   sliceMd5: string
@@ -295,6 +329,10 @@ export interface CommitMultiUploadRequest {
   lazyCheck?: number
 }
 
+/**
+ * 提交家庭上传请求
+ * @public
+ */
 export interface CommitMultiFamilyUploadRequest extends FamilyRequest, CommitMultiUploadRequest {}
 
 /**
@@ -417,6 +455,9 @@ export interface ClientSession {
   sessionKey: string
 }
 
+/**
+ * @public
+ */
 export interface RsaKey {
   expire: number
   pkId: string
@@ -424,10 +465,16 @@ export interface RsaKey {
   ver: string
 }
 
-interface UploadResponse {
+/**
+ * @public
+ */
+export interface UploadResponse {
   code: string
 }
 
+/**
+ * @public
+ */
 export interface UploadInitResponse extends UploadResponse {
   data: {
     uploadType: number
@@ -437,6 +484,9 @@ export interface UploadInitResponse extends UploadResponse {
   }
 }
 
+/**
+ * @public
+ */
 export interface UploadCommitResponse extends UploadResponse {
   file: {
     userFileId: string
@@ -453,6 +503,9 @@ export interface UploadCommitResponse extends UploadResponse {
   fileDataExists: number
 }
 
+/**
+ * @public
+ */
 export interface UploadPartsInfoResponse extends UploadResponse {
   data: {
     uploadFileId: string
@@ -460,8 +513,14 @@ export interface UploadPartsInfoResponse extends UploadResponse {
   }
 }
 
+/**
+ * @public
+ */
 export type PartNumberKey = `partNumber_${number}`
 
+/**
+ * @public
+ */
 export interface MultiUploadUrlsResponse extends UploadResponse {
   uploadUrls: {
     [key: PartNumberKey]: {
@@ -471,14 +530,23 @@ export interface MultiUploadUrlsResponse extends UploadResponse {
   }
 }
 
+/**
+ * @public
+ */
 export interface UploadCallbacks {
   onProgress?: (progress: number) => void // 上传进度回调 (0-100)
   onComplete?: (response: any) => void // 上传完成回调
   onError?: (error: Error) => void // 上传失败回调
 }
 
-type TaskType = 'DELETE' | 'MOVE' | 'COPY'
+/**
+ * @public
+ */
+export type TaskType = 'DELETE' | 'MOVE' | 'COPY'
 
+/**
+ * @public
+ */
 export interface CreateBatchTaskRequest {
   type: TaskType
   taskInfos: [
@@ -492,4 +560,7 @@ export interface CreateBatchTaskRequest {
   targetFolderId?: string
 }
 
+/**
+ * @public
+ */
 export interface CreateFamilyBatchTaskRequest extends FamilyRequest, CreateBatchTaskRequest {}

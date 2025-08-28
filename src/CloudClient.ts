@@ -323,7 +323,7 @@ export class CloudClient {
    * 家庭签到任务
    * @param familyId - 家庭id
    * @returns 签到结果
-   * @deprecated
+   * @deprecated 已无效
    */
   familyUserSign(familyId: string): Promise<FamilyUserSignResponse> {
     return this.request
@@ -333,7 +333,7 @@ export class CloudClient {
 
   /**
    * 获取文件列表
-   * @param pageQuery
+   * @param pageQuery - 查询参数
    * @returns
    */
   getListFiles(pageQuery?: PageQuery, familyId?: string): Promise<FileListResponse> {
@@ -374,7 +374,7 @@ export class CloudClient {
 
   /**
    * 创建文件夹
-   * @param createFolderRequest
+   * @param createFolderRequest - 创建文件夹请求
    * @returns
    */
   createFolder(createFolderRequest: CreateFolderRequest | CreateFamilyFolderRequest): Promise<{
@@ -394,7 +394,7 @@ export class CloudClient {
 
   /**
    * 重命名文件夹
-   * @param folderRequest
+   * @param renameFolderRequest - 重名文件夹请求
    * @returns
    */
   renameFolder(renameFolderRequest: RenameFolderRequest | RenameFamilyFolderRequest) {
@@ -418,7 +418,7 @@ export class CloudClient {
 
   /**
    * 初始化上传
-   * @param initMultiUploadRequest
+   * @param initMultiUploadRequest - 初始化请求
    * @returns
    */
   async initMultiUpload(
@@ -451,7 +451,7 @@ export class CloudClient {
 
   /**
    * 提交上传
-   * @param commitMultiUploadRequest
+   * @param commitMultiUploadRequest - 提交请求
    * @returns
    */
   commitMultiUpload(
@@ -471,7 +471,7 @@ export class CloudClient {
 
   /**
    * 检测秒传
-   * @param params
+   * @param params - 检查参数
    * @returns
    */
   checkTransSecond(params: {
@@ -677,8 +677,8 @@ export class CloudClient {
 
   /**
    * 文件上传
-   * @param param
-   * @param callbacks
+   * @param param - 上传参数
+   * @param callbacks - 上传回调
    * @returns
    */
   async upload(
@@ -724,10 +724,10 @@ export class CloudClient {
 
   /**
    * 检测任务状态
-   * @param type
-   * @param taskId
-   * @param maxAttempts
-   * @param interval
+   * @param type - 任务类型
+   * @param taskId - 任务Id
+   * @param maxAttempts - 重试次数
+   * @param interval - 重试间隔
    * @returns
    */
   async checkTaskStatus(
@@ -775,7 +775,7 @@ export class CloudClient {
 
   /**
    * 创建任务
-   * @param createBatchTaskRequest
+   * @param createBatchTaskRequest - 创建任务参数
    * @returns
    */
   async createBatchTask(
@@ -811,7 +811,7 @@ export class CloudClient {
 
   /**
    * 获取文件下载路径
-   * @param params
+   * @param params - 文件参数
    * @returns
    */
   getFileDownloadUrl(params: { fileId: string; familyId?: string }) {
