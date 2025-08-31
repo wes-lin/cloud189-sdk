@@ -13,6 +13,15 @@ export default defineUserConfig({
         children: ['/guide/introduction', '/guide/getting-started']
       },
       {
+        text: '其他',
+        children: [
+          {
+            text: '更新日志',
+            link: 'https://github.com/wes-lin/cloud189-sdk/blob/main/CHANGELOG.md'
+          }
+        ]
+      },
+      {
         text: 'API',
         link: '/api/'
       }

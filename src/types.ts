@@ -10,7 +10,7 @@ export interface FamilyListResponse {
       /**
        * 家庭id
        */
-      familyId: number
+      familyId: string
       /**
        * 家庭名称
        */
@@ -68,6 +68,272 @@ export interface FamilyUserSignResponse {
    */
   userId: string
 }
+
+/**
+ * 文件类型
+ * @public
+ */
+export enum MediaType {
+  ALL,
+  IMAGE,
+  MUSIC,
+  VIDEO,
+  TXT
+}
+/**
+ * 排序类型
+ * @public
+ */
+export enum OrderByType {
+  NAME = 1,
+  SIZE = 2,
+  LAST_OP_TIME = 3
+}
+/**
+ * 分页参数
+ * @public
+ */
+export interface PageQuery {
+  /**
+   * 分页大小 默认60
+   */
+  pageSize?: number
+  /**
+   * 页码 默认1
+   */
+  pageNum?: number
+  /**
+   * 文件类型
+   * 0 全部 1 图片 2 视频 3 文档
+   */
+  mediaType?: MediaType
+  /**
+   * 文件夹Id
+   */
+  folderId?: string
+  /**
+   * 未知参数 5
+   */
+  iconOption?: number
+  /**
+   * 排序类型
+   * 1 文件名称 2 文件大小 3 文件修改时间
+   */
+  orderBy?: OrderByType
+  /**
+   * 是否倒序
+   */
+  descending?: boolean
+}
+
+/**
+ * 文件列表API响应数据结构
+ * @public
+ */
+export interface FileListResponse {
+  /** 文件列表数据对象 */
+  fileListAO: FileListAO
+
+  /**
+   * 最后修订版本号
+   * 用于增量同步的时间戳或版本标识
+   */
+  lastRev: number
+}
+
+/**
+ * 文件列表数据对象
+ * @public
+ */
+export interface FileListAO {
+  /** 文件总数 */
+  count: number
+
+  /** 文件项列表 */
+  fileList: FileItem[]
+
+  /** 文件夹项列表 */
+  folderList: FolderItem[]
+}
+
+/**
+ * 文件项详细信息
+ * @public
+ */
+export interface FileItem {
+  /** 文件创建时间，格式：YYYY-MM-DD HH:mm:ss */
+  createDate: string
+
+  /**
+   * 收藏标签
+   * 0-未收藏 | 1-已收藏
+   */
+  favoriteLabel: number
+
+  /** 文件图标信息 */
+  icon: {
+    /** 大尺寸图标URL */
+    largeUrl: string
+
+    /** 小尺寸图标URL */
+    smallUrl: string
+  }
+
+  /** 文件唯一标识ID */
+  id: string
+
+  /** 最后操作时间，格式：YYYY-MM-DD HH:mm:ss */
+  lastOpTime: string
+
+  /** 文件MD5哈希值，用于文件校验 */
+  md5: string
+
+  /**
+   * 媒体类型
+   * 1-图片 | 2-视频 | 3-音频 | 4-文档
+   */
+  mediaType: number
+
+  /** 文件名 */
+  name: string
+
+  /**
+   * 图片方向
+   * 0-正常 | 1-90° | 2-180° | 3-270°
+   */
+  orientation: number
+
+  /** 父目录ID */
+  parentId: string
+
+  /** 文件版本标识，格式：YYYYMMDDHHmmss */
+  rev: string
+
+  /** 文件大小（字节） */
+  size: number
+
+  /**
+   * 星标标签
+   * 1-普通 | 2-标星
+   */
+  starLabel: number
+}
+
+/**
+ * 文件夹项详细信息
+ * @public
+ */
+export interface FolderItem {
+  /** 文件夹创建时间，格式：YYYY-MM-DD HH:mm:ss */
+  createDate: string
+
+  /** 文件夹内文件数量 */
+  fileCount: number
+
+  /** 文件夹唯一标识ID */
+  id: string
+
+  /** 最后操作时间，格式：YYYY-MM-DD HH:mm:ss */
+  lastOpTime: string
+
+  /** 文件夹名称 */
+  name: string
+
+  /** 父目录ID */
+  parentId: string
+
+  /** 文件夹版本标识，格式：YYYYMMDDHHmmss */
+  rev: string
+
+  /**
+   * 星标标签
+   * 1-普通 | 2-标星
+   */
+  starLabel: number
+}
+
+/**
+ * 家庭请求
+ * @public
+ */
+export interface FamilyRequest {
+  familyId: string
+}
+
+/**
+ * 创建个人文件夹
+ * @public
+ */
+export interface CreateFolderRequest {
+  parentFolderId: string
+  folderName: string
+}
+
+/**
+ * 创建家庭文件夹
+ * @public
+ */
+export interface CreateFamilyFolderRequest extends FamilyRequest, CreateFolderRequest {}
+
+/**
+ * 创建个人文件夹
+ * @public
+ */
+export interface RenameFolderRequest {
+  folderId: string
+  folderName: string
+}
+
+/**
+ * 创建家庭文件夹
+ * @public
+ */
+export interface RenameFamilyFolderRequest extends FamilyRequest, RenameFolderRequest {}
+
+/**
+ * RsaKey响应
+ * @public
+ */
+export interface RsaKeyResponse extends RsaKey {
+  res_code: number
+  res_message: string
+}
+
+/**
+ * 初始化个人上传请求
+ * @public
+ */
+export interface initMultiUploadRequest {
+  parentFolderId: string
+  fileName: string
+  fileSize: number
+  sliceSize: number
+  fileMd5?: string
+  sliceMd5?: string
+}
+
+/**
+ * 初始化家庭上传请求
+ * @public
+ */
+export interface initMultiFamilyUploadRequest extends FamilyRequest, initMultiUploadRequest {}
+
+/**
+ * 提交个人上传请求
+ * @public
+ */
+export interface CommitMultiUploadRequest {
+  fileMd5: string
+  sliceMd5: string
+  uploadFileId: string
+  lazyCheck?: number
+}
+
+/**
+ * 提交家庭上传请求
+ * @public
+ */
+export interface CommitMultiFamilyUploadRequest extends FamilyRequest, CommitMultiUploadRequest {}
 
 /**
  * 容量信息
@@ -188,3 +454,113 @@ export interface ClientSession {
   accessToken: string
   sessionKey: string
 }
+
+/**
+ * @public
+ */
+export interface RsaKey {
+  expire: number
+  pkId: string
+  pubKey: string
+  ver: string
+}
+
+/**
+ * @public
+ */
+export interface UploadResponse {
+  code: string
+}
+
+/**
+ * @public
+ */
+export interface UploadInitResponse extends UploadResponse {
+  data: {
+    uploadType: number
+    uploadHost: string
+    uploadFileId: string
+    fileDataExists: number
+  }
+}
+
+/**
+ * @public
+ */
+export interface UploadCommitResponse extends UploadResponse {
+  file: {
+    userFileId: string
+    fileName: string
+    fileSize: number
+    fileMd5: string
+    createDate: string
+    rev: number
+    userId: number
+  }
+  /**
+   * 是否快传
+   */
+  fileDataExists: number
+}
+
+/**
+ * @public
+ */
+export interface UploadPartsInfoResponse extends UploadResponse {
+  data: {
+    uploadFileId: string
+    uploadedPartList: string
+  }
+}
+
+/**
+ * @public
+ */
+export type PartNumberKey = `partNumber_${number}`
+
+/**
+ * @public
+ */
+export interface MultiUploadUrlsResponse extends UploadResponse {
+  uploadUrls: {
+    [key: PartNumberKey]: {
+      requestURL: string
+      requestHeader: string
+    }
+  }
+}
+
+/**
+ * @public
+ */
+export interface UploadCallbacks {
+  onProgress?: (progress: number) => void // 上传进度回调 (0-100)
+  onComplete?: (response: any) => void // 上传完成回调
+  onError?: (error: Error) => void // 上传失败回调
+}
+
+/**
+ * @public
+ */
+export type TaskType = 'DELETE' | 'MOVE' | 'COPY'
+
+/**
+ * @public
+ */
+export interface CreateBatchTaskRequest {
+  type: TaskType
+  taskInfos: [
+    {
+      fileId: string
+      fileName?: string
+      isFolder: number
+      srcParentId?: string
+    }
+  ]
+  targetFolderId?: string
+}
+
+/**
+ * @public
+ */
+export interface CreateFamilyBatchTaskRequest extends FamilyRequest, CreateBatchTaskRequest {}

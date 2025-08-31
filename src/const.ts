@@ -1,6 +1,7 @@
 export const WEB_URL = 'https://cloud.189.cn'
 export const AUTH_URL = 'https://open.e.189.cn'
 export const API_URL = 'https://api.cloud.189.cn'
+export const UPLOAD_URL = 'https://upload.cloud.189.cn'
 
 export const AccountType = '02'
 export const AppID = '8025431004'

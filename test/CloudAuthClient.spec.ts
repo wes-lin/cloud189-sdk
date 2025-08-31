@@ -1,13 +1,23 @@
 import { expect } from 'chai'
 import nock from 'nock'
-import { CloudAuthClient } from '../src/CloudClient'
+import { CloudAuthClient } from '../src/CloudAuthClient'
 import { AUTH_URL, API_URL, WEB_URL, ReturnURL } from '../src/const'
+import { MemoryStore } from '../src/store'
+import sinon from 'sinon'
 
 describe('CloudAuthClient', () => {
-  const authClient = new CloudAuthClient()
+  let authClient
   let sessionForPCMock: nock.Scope
 
   beforeEach(() => {
+    // Mock store
+    const store = new MemoryStore()
+    sinon.stub(store, 'get').resolves({
+      accessToken: 'stored_access_token',
+      refreshToken: 'stored_refresh_token',
+      expiresIn: Date.now() + 3600000 // 1 hour later
+    })
+    authClient = new CloudAuthClient()
     const mockSession = {
       sessionKey: 'test_session_key',
       accessToken: 'test_access_token',

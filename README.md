@@ -49,3 +49,7 @@ console.log(info)
 ```
 
 ## [API 文档](https://cloud.189.whaledev.cn/)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=wes-lin/cloud189-sdk&type=Date)](https://www.star-history.com/#wes-lin/cloud189-sdk&Date)
