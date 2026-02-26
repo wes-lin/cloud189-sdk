@@ -410,17 +410,68 @@ export interface CacheQuery {
 }
 
 /**
+ * QR code data returned by getQRCode, used for polling status
+ * @public
+ */
+export interface QRCodeData {
+  uuid: string
+  encryuuid: string
+  reqId: string
+  lt: string
+  paramId: string
+}
+
+/**
+ * QR code scan status enum
+ * @public
+ */
+export enum QRCodeStatus {
+  /** Login success */
+  SUCCESS = 0,
+  /** Waiting for user to scan */
+  WAITING = -106,
+  /** User scanned, waiting for confirmation on device */
+  SCANNED = -11002,
+  /** QR code expired */
+  EXPIRED = -11001
+}
+
+/**
+ * QR code status check response
+ * @public
+ */
+export interface QRCodeStatusResponse {
+  status: QRCodeStatus | number
+  redirectUrl?: string
+}
+
+/**
+ * QR code login options
+ * @public
+ */
+export interface QRLoginOptions {
+  /** Polling interval in ms, default 3000 */
+  pollInterval?: number
+  /** Timeout in ms, default 120000 */
+  timeout?: number
+}
+
+/**
  * 客户端初始化参数
  * @public
  */
 export interface ConfigurationOptions {
-  /** 登录名 */
+  /** Login username */
   username?: string
-  /** 密码 */
+  /** Login password */
   password?: string
-  /** token */
+  /** Token store */
   token?: Store
   ssonCookie?: string
+  /** Callback invoked with QR code URL when ready for scanning */
+  onQRCodeReady?: (qrUrl: string) => void
+  /** QR code login options */
+  qrLoginOptions?: QRLoginOptions
 }
 
 /**

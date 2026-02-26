@@ -30,7 +30,8 @@ import {
   CommitMultiUploadRequest,
   FamilyRequest,
   initMultiUploadRequest,
-  initMultiFamilyUploadRequest
+  initMultiFamilyUploadRequest,
+  QRLoginOptions
 } from './types'
 import { logger } from './log'
 import { asyncPool, calculateFileAndChunkMD5, hexToBase64, md5, partSize } from './util'
@@ -63,12 +64,16 @@ export class CloudClient {
   private sessionKeyPromise: Promise<string>
   private accessTokenPromise: Promise<AccessTokenResponse>
   private generateRsaKeyPromise: Promise<RsaKeyResponse>
+  private onQRCodeReady?: (qrUrl: string) => void
+  private qrLoginOptions?: QRLoginOptions
 
   constructor(_options: ConfigurationOptions) {
     this.#valid(_options)
     this.username = _options.username
     this.password = _options.password
     this.ssonCookie = _options.ssonCookie
+    this.onQRCodeReady = _options.onQRCodeReady
+    this.qrLoginOptions = _options.qrLoginOptions
     this.tokenStore = _options.token || new MemoryStore()
     this.authClient = new CloudAuthClient()
     this.session = {
@@ -148,8 +153,11 @@ export class CloudClient {
     if (options.username && options.password) {
       return
     }
+    if (options.onQRCodeReady) {
+      return
+    }
     logger.error('valid')
-    throw new Error('Please provide username and password or token or ssonCooike !')
+    throw new Error('Please provide username and password or token or ssonCooike or onQRCodeReady !')
   }
 
   async getSession() {
@@ -204,6 +212,24 @@ export class CloudClient {
         logger.error(e)
       }
     }
+
+    if (this.onQRCodeReady) {
+      try {
+        const loginToken = await this.authClient.loginByQRCode(
+          this.onQRCodeReady,
+          this.qrLoginOptions
+        )
+        await this.tokenStore.update({
+          accessToken: loginToken.accessToken,
+          refreshToken: loginToken.refreshToken,
+          expiresIn: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).getTime()
+        })
+        return loginToken
+      } catch (e) {
+        logger.error(e)
+      }
+    }
+
     throw new Error('Can not get session.')
   }
 

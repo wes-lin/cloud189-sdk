@@ -240,7 +240,7 @@ describe('CloudClient valid', () => {
       new CloudClient({})
     } catch (err) {
       expect(err).to.be.an('error')
-      expect(err.message).to.equal('Please provide username and password or token or ssonCooike !')
+      expect(err.message).to.equal('Please provide username and password or token or ssonCooike or onQRCodeReady !')
     }
   })
   it('password is empty', () => {
@@ -248,7 +248,7 @@ describe('CloudClient valid', () => {
       new CloudClient({ username: 'username' })
     } catch (err) {
       expect(err).to.be.an('error')
-      expect(err.message).to.equal('Please provide username and password or token or ssonCooike !')
+      expect(err.message).to.equal('Please provide username and password or token or ssonCooike or onQRCodeReady !')
     }
   })
 })
