@@ -69,7 +69,7 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           BUMP_TYPE="${{ github.event.inputs.bump }}"
 
-          if[ "$BRANCH" = "main" ]; then
+          if [ "$BRANCH" = "main" ]; then
             echo "当前在 main 分支：生成【正式版】"
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
             npm version $BUMP_TYPE -m "chore(release): publish stable version v%s"
@@ -80,10 +80,6 @@ jobs:
             # dev 分支自动追加 beta 小尾巴 (例如 1.0.1-beta.0)
             npm version pre${BUMP_TYPE} --preid=beta -m "chore(release): publish preview version v%s"
           fi
-          
-          # 推送版本修改的 commit 和 tag 到 GitHub
-          git push origin $BRANCH
-          git push origin --tags
           
           # 提取新版本号供后续使用
           echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
@@ -109,12 +105,16 @@ jobs:
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "发布到 NPM Latest 标签..."
-            npm publish --access public
+            npm publish
           else
             echo "发布到 NPM Beta 标签..."
             # 使用 --tag beta，这样用户 npm install package 默认不会安装测试版
-            npm publish --access public --tag beta
+            npm publish --tag beta
           fi
+          
+          # 推送版本修改的 commit 和 tag 到 GitHub
+          git push origin $BRANCH
+          git push origin --tags
 
       # ================== 创建 GitHub Release ==================
       - name: Create GitHub Release
