@@ -49,7 +49,6 @@ jobs:
       # ================== Main 分支专属：测试与覆盖率 ==================
       # 把测试放在升版本之前，一旦测试不通过，直接报错停止，防止发布带 Bug 的代码
       - name: Run Tests & Coverage (Main Only)
-        uses: coverallsapp/github-action@v1
         if: github.ref_name == 'main'
         run: |
           pnpm coverage
