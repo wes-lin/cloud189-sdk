@@ -48,7 +48,7 @@ const info = await client.getUserSizeInfo()
 console.log(info)
 ```
 
-## [API 文档](https://cloud.189.whaledev.cn/)
+## [API 文档](wes-lin.github.io/cloud189-sdk/)
 
 ## Star History
 
