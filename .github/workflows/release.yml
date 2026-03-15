@@ -102,6 +102,11 @@ jobs:
           publish_branch: gh-pages
           commit_message: "docs: update documentation for v${{ env.VERSION }}"
 
+      - name: Check NPM Auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+        run: npm whoami
+
       # ================== NPM 发布 (Main / Dev 双逻辑) ==================
       - name: Publish to NPM
         env:
