@@ -38,6 +38,7 @@ export default defineUserConfig({
     contributors: false
   }),
   lang: 'zh-CN',
+  base:'/cloud189-sdk/',
   title: 'cloud189-sdk',
   description: '基于node.js的第三方天翼云盘SDK',
   head: [['link', { rel: 'icon', href: '/images/favicon.png' }]]
