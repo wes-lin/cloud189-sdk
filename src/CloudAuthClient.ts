@@ -11,7 +11,7 @@ import {
   ReturnURL,
   AccountType
 } from './const'
-import { RefreshTokenSession, TokenSession, CacheQuery, ConfigurationOptions } from './types'
+import { RefreshTokenSession, TokenSession, CacheQuery, ConfigurationOptions, QRCodeData, QRCodeStatus, QRCodeStatusResponse, QRLoginOptions } from './types'
 import { rsaEncrypt } from './util'
 import { logHook, checkErrorHook } from './hook'
 
@@ -183,5 +183,102 @@ export class CloudAuthClient {
         }
       })
       .json()
+  }
+
+  /**
+   * Get QR code data for scanning login
+   * @returns QR code data including uuid for display
+   */
+  async getQRCode(): Promise<QRCodeData> {
+    logger.debug('getQRCode...')
+    const loginForm = await this.getLoginForm()
+    const uuidRes = await this.authRequest
+      .post(`${AUTH_URL}/api/logbox/oauth2/getUUID.do`, {
+        headers: {
+          Referer: AUTH_URL
+        },
+        form: { appId: AppID }
+      })
+      .json<{ uuid: string; encryuuid: string }>()
+
+    if (!uuidRes.uuid || !uuidRes.encryuuid) {
+      throw new Error('Failed to get QR code UUID')
+    }
+
+    return {
+      uuid: uuidRes.uuid,
+      encryuuid: uuidRes.encryuuid,
+      reqId: loginForm.reqId,
+      lt: loginForm.lt,
+      paramId: loginForm.paramId
+    }
+  }
+
+  /**
+   * Check QR code scan status
+   * @param qrData - QR code data from getQRCode
+   * @returns status and redirectUrl on success
+   */
+  async checkQRCodeStatus(qrData: QRCodeData): Promise<QRCodeStatusResponse> {
+    const now = new Date()
+    const pad = (n: number, len = 2) => String(n).padStart(len, '0')
+    const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+      `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}`
+
+    return this.authRequest
+      .post(`${AUTH_URL}/api/logbox/oauth2/qrcodeLoginState.do`, {
+        headers: {
+          Referer: AUTH_URL,
+          Reqid: qrData.reqId,
+          lt: qrData.lt
+        },
+        form: {
+          appId: AppID,
+          clientType: ClientType,
+          returnUrl: ReturnURL,
+          paramId: qrData.paramId,
+          uuid: qrData.uuid,
+          encryuuid: qrData.encryuuid,
+          date,
+          timeStamp: Date.now()
+        }
+      })
+      .json<QRCodeStatusResponse>()
+  }
+
+  /**
+   * QR code login with polling
+   * @param onQRReady - callback invoked with QR code URL for display
+   * @param options - polling interval and timeout
+   * @returns token session
+   */
+  async loginByQRCode(
+    onQRReady: (qrUrl: string) => void,
+    options?: QRLoginOptions
+  ): Promise<TokenSession> {
+    logger.debug('loginByQRCode...')
+    const pollInterval = options?.pollInterval ?? 3000
+    const timeout = options?.timeout ?? 120000
+
+    const qrData = await this.getQRCode()
+    onQRReady(qrData.uuid)
+
+    const deadline = Date.now() + timeout
+    while (Date.now() < deadline) {
+      const res = await this.checkQRCodeStatus(qrData)
+
+      if (res.status === QRCodeStatus.SUCCESS) {
+        logger.debug('QR code login success, getting session...')
+        return await this.getSessionForPC({ redirectURL: res.redirectUrl })
+      }
+
+      if (res.status === QRCodeStatus.EXPIRED) {
+        throw new Error('QR code expired')
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+    }
+
+    throw new Error('QR code login timeout')
   }
 }

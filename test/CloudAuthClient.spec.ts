@@ -1,8 +1,9 @@
 import { expect } from 'chai'
 import nock from 'nock'
 import { CloudAuthClient } from '../src/CloudAuthClient'
-import { AUTH_URL, API_URL, WEB_URL, ReturnURL } from '../src/const'
+import { AUTH_URL, API_URL, WEB_URL, AppID, ReturnURL } from '../src/const'
 import { MemoryStore } from '../src/store'
+import { QRCodeStatus } from '../src/types'
 import sinon from 'sinon'
 
 describe('CloudAuthClient', () => {
@@ -210,5 +211,146 @@ describe('CloudAuthClient', () => {
     } catch (err) {
       expect(err).to.be.an('error')
     }
+  })
+
+  // Helper: mock the login form page HTML
+  const loginFormHtml = `<input type='hidden' name='captchaToken' value='test_captcha_token'>
+    <script>
+      var lt = "test_lt_value";
+      var paramId = "test_param_id";
+      var reqId = "test_req_id";
+    </script>`
+
+  describe('getQRCode', () => {
+    it('should return QR code data', async () => {
+      nock(WEB_URL)
+        .get('/api/portal/unifyLoginForPC.action')
+        .query(true)
+        .reply(200, loginFormHtml)
+
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/getUUID.do')
+        .reply(200, { uuid: 'test_uuid_123', encryuuid: 'test_encryuuid_456' })
+
+      const qrData = await authClient.getQRCode()
+      expect(qrData.uuid).to.equal('test_uuid_123')
+      expect(qrData.encryuuid).to.equal('test_encryuuid_456')
+      expect(qrData.reqId).to.equal('test_req_id')
+      expect(qrData.lt).to.equal('test_lt_value')
+      expect(qrData.paramId).to.equal('test_param_id')
+    })
+  })
+
+  describe('checkQRCodeStatus', () => {
+    const qrData = {
+      uuid: 'test_uuid',
+      encryuuid: 'test_encryuuid',
+      reqId: 'test_req_id',
+      lt: 'test_lt',
+      paramId: 'test_param_id'
+    }
+
+    it('should return waiting status', async () => {
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .reply(200, { status: QRCodeStatus.WAITING })
+
+      const res = await authClient.checkQRCodeStatus(qrData)
+      expect(res.status).to.equal(QRCodeStatus.WAITING)
+    })
+
+    it('should return scanned status', async () => {
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .reply(200, { status: QRCodeStatus.SCANNED })
+
+      const res = await authClient.checkQRCodeStatus(qrData)
+      expect(res.status).to.equal(QRCodeStatus.SCANNED)
+    })
+
+    it('should return success with redirectUrl', async () => {
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .reply(200, { status: QRCodeStatus.SUCCESS, redirectUrl: 'https://example.com/redirect' })
+
+      const res = await authClient.checkQRCodeStatus(qrData)
+      expect(res.status).to.equal(QRCodeStatus.SUCCESS)
+      expect(res.redirectUrl).to.equal('https://example.com/redirect')
+    })
+  })
+
+  describe('loginByQRCode', () => {
+    it('should login successfully after scan', async () => {
+      nock(WEB_URL)
+        .get('/api/portal/unifyLoginForPC.action')
+        .query(true)
+        .reply(200, loginFormHtml)
+
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/getUUID.do')
+        .reply(200, { uuid: 'qr_uuid', encryuuid: 'qr_encryuuid' })
+
+      // First poll: waiting, second poll: success
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .reply(200, { status: QRCodeStatus.WAITING })
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .reply(200, { status: QRCodeStatus.SUCCESS, redirectUrl: 'https://example.com/callback' })
+
+      let receivedQrUrl = ''
+      const result = await authClient.loginByQRCode(
+        (qrUrl) => { receivedQrUrl = qrUrl },
+        { pollInterval: 10, timeout: 5000 }
+      )
+      expect(receivedQrUrl).to.equal('qr_uuid')
+      expect(sessionForPCMock.isDone()).to.be.true
+    })
+
+    it('should throw on QR code expired', async () => {
+      nock(WEB_URL)
+        .get('/api/portal/unifyLoginForPC.action')
+        .query(true)
+        .reply(200, loginFormHtml)
+
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/getUUID.do')
+        .reply(200, { uuid: 'qr_uuid', encryuuid: 'qr_encryuuid' })
+
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .reply(200, { status: QRCodeStatus.EXPIRED })
+
+      try {
+        await authClient.loginByQRCode(() => {}, { pollInterval: 10, timeout: 5000 })
+        expect.fail('should have thrown')
+      } catch (err) {
+        expect(err.message).to.equal('QR code expired')
+      }
+    })
+
+    it('should throw on timeout', async () => {
+      nock(WEB_URL)
+        .get('/api/portal/unifyLoginForPC.action')
+        .query(true)
+        .reply(200, loginFormHtml)
+
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/getUUID.do')
+        .reply(200, { uuid: 'qr_uuid', encryuuid: 'qr_encryuuid' })
+
+      // Always return waiting
+      nock(AUTH_URL)
+        .post('/api/logbox/oauth2/qrcodeLoginState.do')
+        .times(100)
+        .reply(200, { status: QRCodeStatus.WAITING })
+
+      try {
+        await authClient.loginByQRCode(() => {}, { pollInterval: 10, timeout: 50 })
+        expect.fail('should have thrown')
+      } catch (err) {
+        expect(err.message).to.equal('QR code login timeout')
+      }
+    })
   })
 })
