@@ -109,11 +109,11 @@ jobs:
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "发布到 NPM Latest 标签..."
-            npm publish --access public
+            npm publish
           else
             echo "发布到 NPM Beta 标签..."
             # 使用 --tag beta，这样用户 npm install package 默认不会安装测试版
-            npm publish --access public --tag beta
+            npm publish --tag beta
           fi
 
       # ================== 创建 GitHub Release ==================
