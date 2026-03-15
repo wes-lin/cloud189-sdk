@@ -68,6 +68,7 @@ jobs:
         run: |
           BRANCH="${{ github.ref_name }}"
           BUMP_TYPE="${{ github.event.inputs.bump }}"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
 
           if [ "$BRANCH" = "main" ]; then
             echo "当前在 main 分支：生成【正式版】"
@@ -77,8 +78,16 @@ jobs:
           elif [ "$BRANCH" = "dev" ]; then
             echo "当前在 dev 分支：生成【预览版】"
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            # dev 分支自动追加 beta 小尾巴 (例如 1.0.1-beta.0)
-            npm version pre${BUMP_TYPE} --preid=beta -m "chore(release): publish preview version v%s"
+            
+            if [[ "$CURRENT_VERSION" == *"-beta"* && "$BUMP_TYPE" == "patch" ]]; then
+              echo "检测到当前已是 beta 版本，仅递增预览尾号 (beta.x)..."
+              # 使用 prerelease 命令，它只会把 1.0.10-beta.0 变成 1.0.10-beta.1
+              npm version prerelease --preid=beta -m "chore(release): publish preview version v%s"
+            else
+              echo "生成全新的 beta 版本序列..."
+              # 使用 prepatch/preminor/premajor 命令，例如把 1.0.9 变成 1.0.10-beta.0
+              npm version pre${BUMP_TYPE} --preid=beta -m "chore(release): publish preview version v%s"
+            fi
           fi
           
           # 提取新版本号供后续使用
