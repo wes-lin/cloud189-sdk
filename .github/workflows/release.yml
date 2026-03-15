@@ -1,0 +1,128 @@
+name: Release & Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: '版本升级类型 (patch: x.x.1, minor: x.1.0, major: 1.x.x)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      # ================== Main 分支专属：测试与覆盖率 ==================
+      # 把测试放在升版本之前，一旦测试不通过，直接报错停止，防止发布带 Bug 的代码
+      - name: Run Tests & Coverage (Main Only)
+        uses: coverallsapp/github-action@v1
+        if: github.ref_name == 'main'
+        run: |
+          pnpm coverage
+          pnpm coveralls
+      
+      # 👉 将覆盖率报告上传到 Coveralls 👈
+      - name: Upload coverage to Coveralls (Main Only)
+        if: github.ref_name == 'main'
+        uses: coverallsapp/github-action@v1
+        with:
+          github-token: ${{ github.token }}
+          path-to-lcov: coverage/lcov.info
+
+      # ================== 核心：修改版本号与打 Tag ==================
+      - name: Determine & Bump Version
+        id: bump
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          BUMP_TYPE="${{ github.event.inputs.bump }}"
+
+          if[ "$BRANCH" = "main" ]; then
+            echo "当前在 main 分支：生成【正式版】"
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            npm version $BUMP_TYPE -m "chore(release): publish stable version v%s"
+            
+          elif [ "$BRANCH" = "dev" ]; then
+            echo "当前在 dev 分支：生成【预览版】"
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            # dev 分支自动追加 beta 小尾巴 (例如 1.0.1-beta.0)
+            npm version pre${BUMP_TYPE} --preid=beta -m "chore(release): publish preview version v%s"
+          fi
+          
+          # 推送版本修改的 commit 和 tag 到 GitHub
+          git push origin $BRANCH
+          git push origin --tags
+          
+          # 提取新版本号供后续使用
+          echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+
+      # ================== Main 分支专属：编译并发布文档 ==================
+      - name: Build Docs (Main Only)
+        if: github.ref_name == 'main'
+        run: pnpm run docs:build
+
+      - name: Deploy Docs to GitHub Pages (Main Only)
+        if: github.ref_name == 'main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/.vuepress/dist # ⚠️ 注意：请确保这是你真实的文档打包输出目录
+          publish_branch: gh-pages
+          commit_message: "docs: update documentation for v${{ env.VERSION }}"
+
+      # ================== NPM 发布 (Main / Dev 双逻辑) ==================
+      - name: Publish to NPM
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "发布到 NPM Latest 标签..."
+            npm publish --access public
+          else
+            echo "发布到 NPM Beta 标签..."
+            # 使用 --tag beta，这样用户 npm install package 默认不会安装测试版
+            npm publish --access public --tag beta
+          fi
+
+      # ================== 创建 GitHub Release ==================
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          target_commitish: ${{ github.ref_name }}
+          tag_name: v${{ env.VERSION }}
+          name: ${{ steps.bump.outputs.is_prerelease == 'true' && 'Preview' || 'Release' }} v${{ env.VERSION }}
+          prerelease: ${{ steps.bump.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
