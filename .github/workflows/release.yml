@@ -81,10 +81,6 @@ jobs:
             npm version pre${BUMP_TYPE} --preid=beta -m "chore(release): publish preview version v%s"
           fi
           
-          # 推送版本修改的 commit 和 tag 到 GitHub
-          #git push origin $BRANCH
-          #git push origin --tags
-          
           # 提取新版本号供后续使用
           echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
 
@@ -102,11 +98,6 @@ jobs:
           publish_branch: gh-pages
           commit_message: "docs: update documentation for v${{ env.VERSION }}"
 
-      - name: Check NPM Auth
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-        run: npm whoami
-
       # ================== NPM 发布 (Main / Dev 双逻辑) ==================
       - name: Publish to NPM
         env:
@@ -120,6 +111,10 @@ jobs:
             # 使用 --tag beta，这样用户 npm install package 默认不会安装测试版
             npm publish --tag beta
           fi
+          
+          # 推送版本修改的 commit 和 tag 到 GitHub
+          git push origin $BRANCH
+          git push origin --tags
 
       # ================== 创建 GitHub Release ==================
       - name: Create GitHub Release
