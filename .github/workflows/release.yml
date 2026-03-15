@@ -82,8 +82,8 @@ jobs:
           fi
           
           # 推送版本修改的 commit 和 tag 到 GitHub
-          git push origin $BRANCH
-          git push origin --tags
+          #git push origin $BRANCH
+          #git push origin --tags
           
           # 提取新版本号供后续使用
           echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
