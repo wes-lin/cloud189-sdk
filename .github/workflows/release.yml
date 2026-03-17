@@ -20,6 +20,11 @@ jobs:
   release:
     if: github.ref_name == 'main' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
+
+    env:
+      BRANCH: ${{ github.ref_name }}
+      BUMP_TYPE: ${{ github.event.inputs.bump }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,17 +52,14 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
       # ================== Main 分支专属：测试与覆盖率 ==================
-      # 把测试放在升版本之前，一旦测试不通过，直接报错停止，防止发布带 Bug 的代码
+      # 测试放在升版本之前，一旦不通过立即停止，防止发布带 Bug 的代码
       - name: Run Tests & Coverage (Main Only)
-        if: github.ref_name == 'main'
-        run: |
-          pnpm coverage
-          pnpm coveralls
-      
-      # 👉 将覆盖率报告上传到 Coveralls 👈
+        if: env.BRANCH == 'main'
+        run: pnpm coverage
+
       - name: Upload coverage to Coveralls (Main Only)
-        if: github.ref_name == 'main'
-        uses: coverallsapp/github-action@v1
+        if: env.BRANCH == 'main'
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ github.token }}
           path-to-lcov: coverage/lcov.info
@@ -66,62 +68,55 @@ jobs:
       - name: Determine & Bump Version
         id: bump
         run: |
-          BRANCH="${{ github.ref_name }}"
-          BUMP_TYPE="${{ github.event.inputs.bump }}"
           CURRENT_VERSION=$(node -p "require('./package.json').version")
 
           if [ "$BRANCH" = "main" ]; then
             echo "当前在 main 分支：生成【正式版】"
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
             npm version $BUMP_TYPE -m "chore(release): publish stable version v%s"
-            
+
           elif [ "$BRANCH" = "dev" ]; then
             echo "当前在 dev 分支：生成【预览版】"
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            
+
             if [[ "$CURRENT_VERSION" == *"-beta"* && "$BUMP_TYPE" == "patch" ]]; then
               echo "检测到当前已是 beta 版本，仅递增预览尾号 (beta.x)..."
-              # 使用 prerelease 命令，它只会把 1.0.10-beta.0 变成 1.0.10-beta.1
               npm version prerelease --preid=beta -m "chore(release): publish preview version v%s"
             else
               echo "生成全新的 beta 版本序列..."
-              # 使用 prepatch/preminor/premajor 命令，例如把 1.0.9 变成 1.0.10-beta.0
               npm version pre${BUMP_TYPE} --preid=beta -m "chore(release): publish preview version v%s"
             fi
           fi
-          
-          # 提取新版本号供后续使用
-          echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+
+          echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
       # ================== Main 分支专属：编译并发布文档 ==================
-      - name: Build Docs (Main Only)
-        if: github.ref_name == 'main'
+      - name: Build & Deploy Docs (Main Only)
+        if: env.BRANCH == 'main'
         run: pnpm run docs:build
 
       - name: Deploy Docs to GitHub Pages (Main Only)
-        if: github.ref_name == 'main'
+        if: env.BRANCH == 'main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/.vuepress/dist # ⚠️ 注意：请确保这是你真实的文档打包输出目录
+          publish_dir: ./docs/.vuepress/dist
           publish_branch: gh-pages
-          commit_message: "docs: update documentation for v${{ env.VERSION }}"
+          commit_message: "docs: update documentation for v${{ steps.bump.outputs.VERSION }}"
 
-      # ================== NPM 发布 (Main / Dev 双逻辑) ==================
+      # ================== NPM 发布 ==================
       - name: Publish to NPM
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
+          if [ "$BRANCH" = "main" ]; then
             echo "发布到 NPM Latest 标签..."
             npm publish
           else
             echo "发布到 NPM Beta 标签..."
-            # 使用 --tag beta，这样用户 npm install package 默认不会安装测试版
             npm publish --tag beta
           fi
-          
-          # 推送版本修改的 commit 和 tag 到 GitHub
+
           git push origin $BRANCH
           git push origin --tags
 
@@ -129,8 +124,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          target_commitish: ${{ github.ref_name }}
-          tag_name: v${{ env.VERSION }}
-          name: ${{ steps.bump.outputs.is_prerelease == 'true' && 'Preview' || 'Release' }} v${{ env.VERSION }}
+          target_commitish: ${{ env.BRANCH }}
+          tag_name: v${{ steps.bump.outputs.VERSION }}
+          name: ${{ steps.bump.outputs.is_prerelease == 'true' && 'Preview' || 'Release' }} v${{ steps.bump.outputs.VERSION }}
           prerelease: ${{ steps.bump.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
